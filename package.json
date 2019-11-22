@@ -1,0 +1,24 @@
+{
+  "name": "bg-atom-utils",
+  "version": "1.0.0",
+  "description": "Utilities for writing atom packages in spirit of bg-lib system",
+  "main": "bg-atom-utils.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bobjunga/bg-atom-utils.git"
+  },
+  "keywords": [
+    "atom",
+    "package",
+    "utility"
+  ],
+  "author": "Robert E. Griffith",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bobjunga/bg-atom-utils/issues"
+  },
+  "homepage": "https://github.com/bobjunga/bg-atom-utils#readme"
+}
