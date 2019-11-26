@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<body>
+	<script>
+    // let the atom code know that the div is sized and it can create the cytoscape div.
+    // This is a workaround for not allowing being able to create the cytoscape div in
+    // the atom opener callback and not being able to find any other atom generated event
+    // that fires after the view returned by the openner has been added to the DOM.
+    var parent = window.opener || window.parent;
+    var msg = (1) ? JSON.stringify({event: 'init'}) : (urlParams['ready'] || 'ready');
+    parent.postMessage(msg, '*');
+    </script>
+</body>
+</html>
