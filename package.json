@@ -17,11 +17,17 @@
   ],
   "author": "Robert E. Griffith",
   "license": "MIT",
+
+
+
   "bugs": {
     "url": "https://github.com/bobjunga/bg-atom-utils/issues"
   },
   "homepage": "https://github.com/bobjunga/bg-atom-utils#readme",
   "dependencies": {
     "redom": "^3.24.2"
+  },
+  "scripts": {
+    "publish": "git push --tags && npm publish"
   }
 }
