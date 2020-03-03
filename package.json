@@ -1,6 +1,6 @@
 {
   "name": "bg-atom-utils",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Utilities for writing atom packages in spirit of bg-lib system",
   "main": "bg-atom-utils.js",
   "scripts": {
