@@ -4,7 +4,8 @@
   "description": "Utilities for writing atom packages in spirit of bg-lib system",
   "main": "bg-atom-utils.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "publish": "git push --tags && npm publish"
   },
   "repository": {
     "type": "git",
