@@ -1,19 +1,19 @@
 {
   "name": "bg-atom-utils",
-  "version": "1.0.4",
-  "description": "Utilities for writing atom packages in spirit of bg-lib system",
   "main": "bg-atom-utils.js",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/junga-com/bg-atom-utils.git"
-  },
+  "version": "1.0.4",
+  "description": "Utilities for writing Atom packages in spirit of bg-lib system",
   "keywords": [
     "atom",
     "package",
     "utility",
     "bg"
   ],
-  "author": "Robert E. Griffith",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/junga-com/bg-atom-utils.git"
+  },
+  "author": "Robert E. Griffith <npmjs@junga.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/junga-com/bg-atom-utils/issues"
