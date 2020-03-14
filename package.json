@@ -3,24 +3,22 @@
   "version": "1.0.4",
   "description": "Utilities for writing atom packages in spirit of bg-lib system",
   "main": "bg-atom-utils.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bobjunga/bg-atom-utils.git"
+    "url": "git+https://github.com/junga-com/bg-atom-utils.git"
   },
   "keywords": [
     "atom",
     "package",
-    "utility"
+    "utility",
+    "bg"
   ],
   "author": "Robert E. Griffith",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bobjunga/bg-atom-utils/issues"
+    "url": "https://github.com/junga-com/bg-atom-utils/issues"
   },
-  "homepage": "https://github.com/bobjunga/bg-atom-utils#readme",
+  "homepage": "https://github.com/junga-com/bg-atom-utils#readme",
   "dependencies": {
     "redom": "^3.24.2"
   }
