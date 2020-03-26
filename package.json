@@ -1,6 +1,7 @@
 {
   "name": "bg-atom-utils",
-  "main": "bg-atom-utils.js",
+  "main": "index.js",
+  "module": "bg-atom-utils.js",
   "version": "1.1.0",
   "description": "Utilities for writing Atom packages in spirit of bg-lib system",
   "keywords": [
@@ -20,6 +21,7 @@
   },
   "homepage": "https://github.com/junga-com/bg-atom-utils#readme",
   "dependencies": {
+    "esm": "^3.2.25",
     "redom": "^3.24.2"
   }
 }
