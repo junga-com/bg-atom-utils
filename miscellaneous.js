@@ -1,4 +1,3 @@
-'use babel';
 
 import { el, list, mount, setAttr } from 'redom';
 

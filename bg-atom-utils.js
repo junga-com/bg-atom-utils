@@ -1,5 +1,3 @@
-'use babel';
-
 export * from './BGAtomPlugin'
 export * from './BGAtomView'
 export * from './BGStylesheet'

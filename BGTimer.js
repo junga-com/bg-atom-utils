@@ -1,4 +1,3 @@
-'use babel';
 
 export class BGTimer {
 	constructor(prec) {

@@ -1,13 +1,7 @@
-'use babel';
 
 import { Disposable, CompositeDisposable } from 'atom';
-// const Disposable = require('atom').Disposable;
-// const CompositeDisposable = require('atom').CompositeDisposable;
-
-
 
 export class BGAtomPlugin {
-	foo = 'hi';
 	constructor() {
 		// subscriptions is a place to put things that need to be cleaned up on deativation
 		this.disposables = new CompositeDisposable();
@@ -39,5 +33,3 @@ export class BGAtomPlugin {
 		this.subscriptions.add(atom.commands.add('atom-workspace', obj));
 	}
 }
-
-// module.exports.BGAtomPlugin = BGAtomPlugin

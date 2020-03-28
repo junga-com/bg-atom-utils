@@ -1,4 +1,3 @@
-'use babel';
 
 import { Disposable, CompositeDisposable } from 'atom';
 import { el, list, mount, setAttr } from 'redom';
