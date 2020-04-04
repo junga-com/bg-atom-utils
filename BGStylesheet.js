@@ -49,10 +49,6 @@ export class BGStylesheet {
 }
 
 
-export function bgAsyncSleep(ms) {
-	return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 
 // This class facilitates adjusting the size of List Items in Atom (namely the tree-view and tabs)
 // It allows changing the fontSize and line-height separately

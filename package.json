@@ -1,7 +1,7 @@
 {
   "name": "bg-atom-utils",
-  "main": "index.js",
-  "module": "bg-atom-utils.js",
+  "main": "esmLoader.js",
+  "module": "./bg-atom-utils.js",
   "version": "1.1.0",
   "description": "Utilities for writing Atom packages in spirit of bg-lib system",
   "keywords": [
