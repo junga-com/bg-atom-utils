@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/junga-com/bg-atom-utils#readme",
   "dependencies": {
+    "bg-atom-redom-ui": "file:../bg-atom-redom-ui",
     "esm": "^3.2.25",
     "redom": "^3.24.2"
   }

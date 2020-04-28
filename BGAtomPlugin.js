@@ -54,10 +54,11 @@ export class BGAtomPlugin {
 		// if the derived class declares a lateActivate method, invoke it from the onDidActivateInitialPackages event
 
 		if (Reflect.has(this.PluginClass.prototype, 'lateActivate')) {
-			if (atom.packages.initialPackagesActivated)
+			if (atom.packages.initialPackagesActivated) {
 				setTimeout(()=>this.lateActivate(), 0);
-			else
+			} else {
 				this.disposables.add(atom.packages.onDidActivateInitialPackages(()=>{this.lateActivate();}));
+			}
 		}
 	}
 
