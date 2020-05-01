@@ -1,169 +1,9 @@
 
 import assert from 'assert';
-import { CompositeDisposable } from 'atom';
-import { el, list, mount, setAttr, text } from 'redom';
-import { Component } from 'bg-atom-redom-ui';
-import { apmInstall, BGPromise } from './procCntr';
+import { Component, Disposables } from 'bg-atom-redom-ui';
 
 
-// Install one or more Atom pacakges so that their features are available inside Atom. It uses apmInstall to do the work.
-// Features:
-//     * can accept a single pkgName, a comma separated list of pkgNames, or an array of pkgNames 
-//     * prompts the user for confirmation by default.
-//     * shows progress and informs the user of success or failure. 
-// It is not an error to call this function when the package is already installed or activated. 
-// Note that this initial implementation will launch one apm for each packageName all at once. If this is used to install many
-// packages, we would want to use a worker queue pattern to limit the simultaneous apm runs. Also, the confirmation dialog will need
-// display the long list better.
-//
-// Async Pattern:
-// This function returns a promise so that it can be used with await in async functions and/or the caller can pass in onAllFinishedCB
-// and/or onPkgFinishedCB. onAllFinishedCB is equivalent to waiting for the promise but onPkgFinishedCB gives the caller access to additional
-// information. The author might want to use await to tell when all packages are ready (or catch the exception if any can not be installed)
-// and also provide onPkgFinishedCB to provide feedback as pkgs finish installing.
-//
-// Return Value:
-//    <void> : On success, there is no information returned but the promise or onAllFinishedCB callback lets you know when its done.
-//
-// Params:
-//    <packageNames>:string|Array<string> : one or more package names to install. A string input can have comma separated names.
-//    <onAllFinishedCB>(err) : optional callback that is called after all <packageNames> has been attempted. On success, err is falsey
-//    <onPkgFinishedCB>(pkgName, err, stdout, stderr) : optional callback that is called after each <packageName> is installed or 
-//                           failed to install. 
-//    <confirmPromt>:true|false : controls whether the user is prompted to confirm installation.  
-//    <extraButtons>:object : extra buttons to display in the confirmation prompt. These can offer alternatives to installing the packages
-//             such as configuring the system so that the packages are not needed. 
-//             See https://flight-manual.atom.io/api/v1.45.0/NotificationManager/#instance-addInfo 
-export async function PackageInstall(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[]}) {
-	var pkgInstaller = new PkgInstaller(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt, extraButtons})
-
-	return pkgInstaller.prom
-}
-
-
-
-class PkgInstaller {
-	constructor(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[]}) {
-		this.packageNames = (typeof packageNames == 'string') ? packageNames.split(',') : packageNames;
-		this.prom = new BGPromise();
-		this.onAllFinishedCB = onAllFinishedCB;
-		this.onPkgFinishedCB = onPkgFinishedCB;
-		this.extraButtons       = extraButtons;
-
-		if (confirmPromt)
-			this.confirmInstallation()
-		else
-			this.installPkgs()
-	}
-
-	// This opens a dialog with the user giving them several choices represented in the buttons parameter. Each choice must lead to
-	// this.prom being resolved or rejected. Install -> this.installPkgs(), do nothing -> this.endWithoutInstalling(), extraButtons -> <something> + this.endWithoutInstalling
-	confirmInstallation() {
-		// fixup the provided extra buttons to call this.endWithoutInstalling after they do their work
-		for (const button of this.extraButtons) {
-			let upstreamCB = button.onDidClick;
-			button.onDidClick = (...p)=>{upstreamCB(...p); this.endWithoutInstalling()}
-		}
-		this.confirmDlg = atom.notifications.addWarning(
-			`The feature you are accessing requires that the the following package(s) be installed.`,
-			{	dismissable: true,
-				icon: 'cloud-download',
-				detail: this.packageNames.join(', '),
-				description: "How do you want to proceed?",
-				buttons: [
-					{text:'Install package(s)', onDidClick:()=>{this.installPkgs(); }},
-					...this.extraButtons,
-					{text:'Do nothing for now', onDidClick:()=>{this.endWithoutInstalling();}}
-				]
-			}
-		);
-	}
-
-	installPkgs() {
-		try {
-			this.confirmDlg && this.confirmDlg.dismiss();
-
-			this.feedbackDlg = new BGFeedbackDialog("Installing Packages", {
-				dismissable: true,
-				icon: 'cloud-download',
-				status: this.packageNames.join(', '),
-			});
-
-			// launch apm install for each pkgName, keeping track of 
-			this.pkgsPendingCount = this.packageNames.length
-			this.pkgsSuccessList = [];
-			this.pkgsFailList = [];
-			
-			for (const pkgName of this.packageNames) {
-				apmInstall(pkgName,
-					// success callback of one apmInstall invocation
-					(stdout, stderr)=> {
-						this.pkgsSuccessList.push(pkgName);
-						this.onOnePkgFinish(pkgName, 0, stdout, stderr)
-					},
-					// fail callback of one apmInstall invocation
-					(err, stdout, stderr)=> {
-						this.pkgsFailList.push(pkgName);
-						this.onOnePkgFinish(pkgName, err, stdout, stderr)
-					}
-				)
-			}
-		} catch(e) {
-			this.feedbackDlg && this.feedbackDlg.dismiss();
-			this.prom.reject(e);
-		}
-	}
-
-	onOnePkgFinish(pkgName, err, stdout, stderr) {
-		this.pkgsPendingCount--;
-		this.onPkgFinishedCB && this.onPkgFinishedCB(pkgName, err, stdout, stderr);
-
-		this.feedbackDlg.update({
-			status: `
-				<div class="pkgList" style="${(!this.pkgsPendingCount)?'display:none':''}">
-					<span class="badge ">${this.pkgsPendingCount}</span>
-					package installations in progress.<br/><br/>
-				</div>
-				<div class="pkgList" style="${(!this.pkgsSuccessList.length)?'display:none':''}">
-					<span class="badge badge-success">${this.pkgsSuccessList.length} </span>
-					packages were installed successfully.
-					<div>${this.pkgsSuccessList.join(', ')}</div>
-				</div>
-				<div class="pkgList" style="${(!this.pkgsFailList.length)?'display:none':''}">
-					<span class="badge badge-error">${this.pkgsFailList.length} </span>
-					packages failed to install.
-					<div>${this.pkgsFailList.join(', ')}</div>
-				</div>
-			`,
-			current: this.pkgsSuccessList.length + this.pkgsFailList.length,
-			goal:    this.packageNames.length
-		})
-
-		if (this.pkgsPendingCount <= 0) {
-			this.feedbackDlg.update({title:'Finished Installing Packages', buttons:[
-				{text:'Dismiss', onDidClick:()=>{this.feedbackDlg.dismiss(); }}
-			]});
-			this.feedbackDlg.hideProgress()
-
-			this.onAllFinishedCB && this.onAllFinishedCB(this.pkgsSuccessList, this.pkgsFailList)
-			if (this.pkgsFailList.length > 0) {
-				this.prom.reject()
-			} else {
-				setTimeout(()=>this.feedbackDlg.dismiss(), 2000)
-				this.prom.resolve()
-			}
-		}
-	}
-
-	endWithoutInstalling() {
-		this.confirmDlg && this.confirmDlg.dismiss();
-		this.prom.reject('user opted not to install');
-	}
-}
-
-
-
-class BGFeedbackDialog {
+export class BGFeedbackDialog {
 	constructor(title, params) {
 		this.type = params.type || 'info';
 		if (!params.detail) params.detail = ' ';
@@ -186,21 +26,15 @@ class BGFeedbackDialog {
 			this.el = atom.views.getView(this.dialogBox).element;
 			this.el.classList.add('BGFeedbackDialog');
 			this.title = this.el.querySelector('.message');
-console.log('this.title=',this.title);
 			this.buttons = this.el.querySelector('.meta .btn-toolbar');
-console.log('this.buttons=',this.buttons);
 			if (!this.buttons) {
 				const meta = this.el.querySelector('.meta');
 				this.buttons = new Component('$div.btn-toolbar').el;
 				meta.appendChild(this.buttons);
 				this.el.classList.add('has-buttons');
 			}
-console.log('this.buttons=',this.buttons);
 
 			this.dialogDetailEl = this.el.querySelector('.detail-content');
-window.dlg = this
-window.dlgEl = atom.views.getView(this.dialogBox).element
-console.log({dlgEl:window.dlgEl, dialogDetailEl:this.dialogDetailEl});
 
 			Component.mount(this.dialogDetailEl, [
 				this.statusArea,
@@ -270,24 +104,6 @@ console.log({dlgEl:window.dlgEl, dialogDetailEl:this.dialogDetailEl});
 		this.dialogBox.dismiss()
 	}
 }
-
-// This makes it easy to follow the active/deactive state of one or more packages that you depend on.
-// Params:
-//    packageNames  : a comma separated string or array of package names.
-//    callback(pkgName, isActive) : callback function to handle the envent. isActive will be true if it was just activated and 
-//                    false if it was just deactivated.
-export function OnDependentPackageStateChange(packageNames, callback) {
-	if (typeof packageNames == 'string') packageNames = packageNames.split(',');
-	atom.packages.onDidActivatePackage((pkg)=>{
-		if (packageNames.includes(pkg.name))
-			callback(pkg.name, true);
-	});
-	atom.packages.onDidDeactivatePackage((pkg)=>{
-		if (packageNames.includes(pkg.name))
-			callback(pkg.name, false);
-	});
-}
-
 
 export function bgAsyncSleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
@@ -379,7 +195,7 @@ export function GetConfigKeys($keyContainer, $configKeyRegex) {
 //    form2: OnDidChangeAnyConfig(<configKeyRegex:RegExp> [, <keyContainer:string>], <callback:function>)
 export function OnDidChangeAnyConfig(keyContainer, configKeyRegex, callback) {
 	var [keyContainer, configKeyRegex, callback] = ArrangeParamsByType(arguments, 'string', RegExp, 'function');
-	var disposables    = new CompositeDisposable();
+	var disposables    = new Disposables();
 	var keys = GetConfigKeys(keyContainer, configKeyRegex);
 	assert(keys.length < 100, 'Registering callbacks on large sets of configuration keys (>100) is not supported');
 	for (const name of keys)
@@ -391,7 +207,7 @@ export function OnDidChangeAnyConfig(keyContainer, configKeyRegex, callback) {
 // The active WorkspaceItem is used if it exists, other wise atom.workspace is used. 
 export function DispatchCommand(cmd) {
 	var target = atom.workspace.getActivePaneItem();
-	var targetEl = target ? target.getElement() : atom.workspace.getElement();
+	var targetEl = (target && target.getElement) ? target.getElement() : atom.workspace.getElement();
 	atom.commands.dispatch(targetEl, cmd);
 }
 

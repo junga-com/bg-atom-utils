@@ -16,7 +16,7 @@ See the atom package bg-atom-packageDev which demonstrate how to use this packag
 * class BGAtomTabFontSizer : change the size of tab controls in tree-view dynamically
 
 ### Functions
-* function OnDependentPackageStateChange(packageNames, callback)  : makes depending on other pkgs more convenient
+* function WatchPackageStateChange(packageNames, callback)  : makes depending on other pkgs more convenient
 * function bgAsyncSleep(ms) : delay function to be used in sync functions
 * function FirstParamOf   : helper for overloaded function parameters
 * function ArrangeParamsByType   : helper for overloaded function parameters
