@@ -1,12 +1,12 @@
-import assert from 'assert';
-import { BGPromise } from './bg-promise';
-import { BGFeedbackDialog } from './miscellaneous'
-import { Disposables } from 'bg-atom-redom-ui'
-import { exec, spawn, execSync }          from 'child_process';
+import assert                    from 'assert';
+import { BGPromise }             from './bg-promise';
+import { BGFeedbackDialog }      from './miscellaneous'
+import { Disposables }           from './Disposables'
+import { exec, spawn, execSync } from 'child_process';
 
 // this is a hack to subclass the atom.packages instance with proposed features.
 // atom.packages is untouched
-// atom2.packages is same as atom.packages but also has these extra methods 
+// atom2.packages is same as atom.packages but also has these extra methods
 export class BGPackageManager {
 	installPackage(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[], ...p}) {
 		return PackageInstall(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt, extraButtons, ...p});
@@ -17,16 +17,16 @@ export class BGPackageManager {
 	}
 }
 Object.setPrototypeOf(BGPackageManager.prototype, atom.packages)
-if (!global.atom2) global.atom2 = {} 
+if (!global.atom2) global.atom2 = {}
 if (!atom2.packages) atom2.packages = new BGPackageManager();
 
 
 // Install one or more Atom pacakges so that their features are available inside Atom. It uses apmInstall to do the work.
 // Features:
-//     * can accept a single pkgName, a comma separated list of pkgNames, or an array of pkgNames 
+//     * can accept a single pkgName, a comma separated list of pkgNames, or an array of pkgNames
 //     * prompts the user for confirmation by default.
-//     * shows progress and informs the user of success or failure. 
-// It is not an error to call this function when the package is already installed or activated. 
+//     * shows progress and informs the user of success or failure.
+// It is not an error to call this function when the package is already installed or activated.
 // Note that this initial implementation will launch one apm for each packageName all at once. If this is used to install many
 // packages, we would want to use a worker queue pattern to limit the simultaneous apm runs. Also, the confirmation dialog will need
 // display the long list better.
@@ -44,14 +44,14 @@ if (!atom2.packages) atom2.packages = new BGPackageManager();
 //    <packageNames>:string|Array<string> : one or more package names to install. A string input can have comma separated names.
 //    <onAllFinishedCB>(err) : optional callback that is called after all <packageNames> has been attempted. On success, err is falsey
 //                             This function also returns a promise so the caller can use that (.then.. or await) instead of onAllFinishedCB.
-//    <onPkgFinishedCB>(pkgName, err, stdout, stderr) : optional callback that is called after each <packageName> is installed or 
+//    <onPkgFinishedCB>(pkgName, err, stdout, stderr) : optional callback that is called after each <packageName> is installed or
 //                           failed to install. This function already gives the user feedback on each package success/failure so this
 //                           is not typically needed.
 //    <confirmPromt>:true|false : controls whether the user is prompted to confirm installation.  If false, the installation will
 //                           start right away.
 //    <extraButtons>:object : extra buttons to display in the confirmation prompt. These can offer alternatives to installing the packages
-//             such as configuring the system so that the packages are not needed. 
-//             See https://flight-manual.atom.io/api/v1.45.0/NotificationManager/#instance-addInfo 
+//             such as configuring the system so that the packages are not needed.
+//             See https://flight-manual.atom.io/api/v1.45.0/NotificationManager/#instance-addInfo
 export function PackageInstall(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[], ...p}) {
 	var pkgInstaller = new PkgInstaller(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt, extraButtons, ...p})
 	return pkgInstaller.prom
@@ -108,11 +108,11 @@ class PkgInstaller {
 				status: this.packageNames.join(', '),
 			});
 
-			// launch apm install for each pkgName, keeping track of 
+			// launch apm install for each pkgName, keeping track of
 			this.pkgsPendingCount = this.packageNames.length
 			this.pkgsSuccessList = [];
 			this.pkgsFailList = [];
-			
+
 			for (const pkgName of this.packageNames) {
 				apmInstall(pkgName,
 					// success callback of one apmInstall invocation
@@ -185,7 +185,7 @@ class PkgInstaller {
 // This makes it easy to follow the active/deactive state of one or more packages that you depend on.
 // Params:
 //    packageNames  : a comma separated string or array of package names.
-//    callback(pkgName, isActive) : callback function to handle the envent. isActive will be true if it was just activated and 
+//    callback(pkgName, isActive) : callback function to handle the envent. isActive will be true if it was just activated and
 //                    false if it was just deactivated.
 export function WatchPackageStateChange(packageNames, callback) {
 	if (typeof packageNames == 'string') packageNames = packageNames.split(',');
@@ -206,12 +206,12 @@ export function WatchPackageStateChange(packageNames, callback) {
 // Install an Atom pacakge so that it is active inside Atom. It uses apm cli tool to install the package locally if needed and then
 // activates it within Atom so that the packages features should become available as soon as the onInstalledCB callback is invoked.
 // This function returns a promise so that it can be used with await in async function and/or the caller can pass in onInstalledCB
-// and/or onFailedCB. 
-// It is not an error to call this function when the package is already installed or activated. 
+// and/or onFailedCB.
+// It is not an error to call this function when the package is already installed or activated.
 // Async Pattern:
-//    This is a dual mode async function. You can use the promise it returns or pass it callbacks. 
+//    This is a dual mode async function. You can use the promise it returns or pass it callbacks.
 // Return Value:
-//    <pkgInfoInfo> : an object with information about the pkg that was installed. This is the --json output of apm 
+//    <pkgInfoInfo> : an object with information about the pkg that was installed. This is the --json output of apm
 //                    note that old versions of apm do not support --json in which case the string output of apm is returned
 export function apmInstall(pkgName, onInstalledCB, onFailedCB) {
 	var prom = new BGPromise()
@@ -246,7 +246,7 @@ export function apmInstall(pkgName, onInstalledCB, onFailedCB) {
 	return prom
 }
 
-// If this is ran from a script, outside the atom enironment, it will return 'apm' and rely on it being in the path. 
+// If this is ran from a script, outside the atom enironment, it will return 'apm' and rely on it being in the path.
 function GetApmPath() {
 	if (global.atom)
 		return atom.packages.getApmPath()

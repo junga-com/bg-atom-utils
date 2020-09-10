@@ -1,24 +1,22 @@
-
-import { Disposable, CompositeDisposable } from 'atom';
-import { el, list, mount, setAttr } from 'redom';
-
+import { Component } from 'bg-atom-redom-ui';
+import { Disposables } from './Disposables';
 
 const defaultBGAtomViewOptions = {
 	title:           'BG View',
 	defaultLocation: 'bottom',
 	allowedLocations: ['center', 'left', 'right', 'bottom'],
 	isPermanent:      false
-} 
+}
 
 
 // This is a generic component for creating new Atom items dislayed in panes. This class can be used as is to open an empty view.
-// Typically, you would make a new class that extends this, register a URI opener in atom.workspace and return a new instance 
+// Typically, you would make a new class that extends this, register a URI opener in atom.workspace and return a new instance
 // of that class from the opener.
 // Features:
 //    onDomReady() : overridable method. This method gets called after the view is added to the DOM and is located in a pane or panel
 //    onResize()   : overridable method. This gets called when the view changes size
 //    onFocus()    : overridable method. This gets called when the view receives the focus. Often you need to delegate focus to
-//                   a specific child component of the view 
+//                   a specific child component of the view
 //    this.options : gets passed through constructors to implement defaults at each class in the hiearchy to set Atom features
 // How To Use:
 // In your plugin entry file (see package.json:main) activate() method, register an opener callback which returns a new instance
@@ -35,10 +33,10 @@ export class BGAtomView {
 		this.uri     = uri;
 		this.parent  = parent;
 		this.options = Object.assign({}, defaultBGAtomViewOptions, options) || {};
-		this.subscriptions = new CompositeDisposable();
+		this.subscriptions = new Disposables();
 
 		// Create root element
-		this.rootElement = el('div.bg-toolPanel');
+		this.rootElement = Component('$div.bg-toolPanel');
 
 
 		// Create a temporary iframe to generate the onDomReady message back to us
@@ -50,7 +48,7 @@ export class BGAtomView {
 	}
 
 
-	// this is the internal onDomReady callback gernerated by the iframe trick 
+	// this is the internal onDomReady callback gernerated by the iframe trick
 	_postCtor(ev) {
 		if (!this.tFrame || this.tFrame.contentWindow != ev.source) return;
 		this.tFrame.remove(); delete this.tFrame;
@@ -72,7 +70,7 @@ export class BGAtomView {
 		this.onDomReady()
 	}
 
-	// override this to finish construction after atom has added your getElement() into the DOM 
+	// override this to finish construction after atom has added your getElement() into the DOM
 	onDomReady() {}
 
 	// override this to perform actions when the view changes size
@@ -103,6 +101,6 @@ export class BGAtomView {
 	// helper function to add window.addEventListener's with a disposable registered
 	addWinListener(eventName, callback) {
 		window.addEventListener(eventName, callback);
-		this.subscriptions.add(new Disposable(() => window.removeEventListener(eventName, callback)));
+		this.subscriptions.add(new Disposables(() => window.removeEventListener(eventName, callback)));
 	}
 }

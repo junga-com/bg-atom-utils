@@ -1,10 +1,9 @@
-
 // This is a Promise compatible class that allows a function to support both Promise and callback patterns. I find functions written
 // to the real Promise class to be hard to follow because the algorithms needs to be written inside the Promise constructor. This
-// allows a bit more declarative coding style. 
+// allows a bit more declarative coding style.
 // The difference between this and Promise is that it has a default constructor and explict resolve() and reject() methods that can
 // be called explicitly
-// This opens the BGPromise up to using it like an IPC semaphore-like semantics with the await statement. 
+// This opens the BGPromise up to using it like an IPC semaphore-like semantics with the await statement.
 export class BGPromise {
 	constructor() {
 		this.state = BGPromise.pending;
@@ -45,12 +44,12 @@ export class BGPromise {
 		return this._checkForFire();
 	}
 
-	// The concept of resetting is new to this type of promise. This base class can be reset manually to reuse it but the reall 
+	// The concept of resetting is new to this type of promise. This base class can be reset manually to reuse it but the reall
 	// use-case is the BGRepeatablePromise derived class that automatically resets after each resolve. This allows using it in a
-	// loop with await that 'wakes' up each time the promise is resolved. 
+	// loop with await that 'wakes' up each time the promise is resolved.
 	reset() {
 		// if we have been resolved or rejected but noone has received those results, we do not reset because we dont want to loose
-		// those results. 
+		// those results.
 		if (this.state != BGPromise.pending && this.firedResolveCBList.length+this.firedRejectedCBList.length>0) {
 			this._checkForFire(); // make sure any new cb are drained into the fired* arrays
 			switch (this.state) {

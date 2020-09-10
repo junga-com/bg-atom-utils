@@ -1,7 +1,7 @@
-import { Disposables } from 'bg-atom-redom-ui';
+import { Disposables } from './Disposables';
 import { FirstParamOf } from './miscellaneous';
 
-// BGAtomPlugin makes writing Atom plugin packages easier. 
+// BGAtomPlugin makes writing Atom plugin packages easier.
 // Atom Entry Points:
 //    initialize:      maps to static PluginClass.Initialize()
 //    activate(state)  maps to PluginClass.constructor()
@@ -17,7 +17,7 @@ import { FirstParamOf } from './miscellaneous';
 //    watchConfig()        : get notified when a configKey's value changes
 //    watchPackages()      : get notified when a package's activation state changes
 // Plugin Registry:
-//    window.bgPlgins['my-plugin']  : other packages and user init.js can find your package's services dynamically 
+//    window.bgPlgins['my-plugin']  : other packages and user init.js can find your package's services dynamically
 // Example:
 //     class MyPlugin extends BGAtomPlugin {
 //       constructor('my-plugin', ...p) {
@@ -33,7 +33,7 @@ export class BGAtomPlugin {
 	static Initialize() {
 	}
 
-	// usage: pkgName, lastSessionsState 
+	// usage: pkgName, lastSessionsState
 	constructor(...p) {
 		this.pkgName = FirstParamOf('string', ...p);
 		this.lastSessionsState = FirstParamOf('object', ...p) || {};
