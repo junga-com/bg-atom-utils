@@ -24,6 +24,9 @@
 //    isTargetStillCompatibleWithThisPollyfill() : The derived class can override this function to return true/false to indicate if the
 //         target object is still compatible with this polyfill. Its possible that the upstream code changes in a way that the polyfill
 //         will no longer work.
+//    static 'config' property : to add and remove config settings, put their definitions in this static variable of the derived class.
+//         This is almost the same as the static config property of BGAtmomPlugin classes except the top level key names are absolute
+//         and therefore can contain periods.
 //    Methods....
 //         In the derived class you can write methods for the target object. Use 'this.target' instead of 'this'. Add the name of the
 //         method to the propsToReplace array passed to the super constructor.
@@ -43,14 +46,22 @@ export class PolyfillObjectMixin {
 	isTargetStillCompatibleWithThisPollyfill() {return true;}
 
 	getStatus() {
-		if (this.target[`polyfill_${this.name}`])
+		if (this.isInstalled())
 			return PolyfillObjectMixin.sInstalled;
 		else if (this.doesTargetAlreadySupportFeature())
 			return PolyfillObjectMixin.sNotNeeded;
 		else if (!this.isTargetStillCompatibleWithThisPollyfill())
-			return PolyfillObjectMixin.sNoLongerCompatile;
+			return PolyfillObjectMixin.sNoLongerCompatible;
 		else
 			return PolyfillObjectMixin.sUninstalled;
+	}
+
+	// returns true if the feature is available because either it is now natively supportted so that the polyfill is not needed
+	// or the polyfill is already installed.
+	isFeatureSupported() {
+		const status = this.getStatus();
+		return status == PolyfillObjectMixin.sNotNeeded
+			|| status == PolyfillObjectMixin.sInstalled;
 	}
 
 	// make the install/uninstall state reflect the boolean value passed in
@@ -61,9 +72,11 @@ export class PolyfillObjectMixin {
 			this.uninstall();
 	}
 
+	isInstalled() {return !!this.target[`polyfill_${this.name}`]}
+
 	// extend the target object with the changes implemented with this class
 	install() {
-		console.assert(this.getStatus()!=PolyfillObjectMixin.sNoLongerCompatile, `PolyfillObjectMixin '${this.name}' can not be installed because the target Atom code has changed since it was written`);
+		console.assert(this.getStatus()!=PolyfillObjectMixin.sNoLongerCompatible, `PolyfillObjectMixin '${this.name}' can not be installed because the target Atom code has changed since it was written`);
 		if (this.getStatus()!=PolyfillObjectMixin.sUninstalled) return;
 
 		this.target[`polyfill_${this.name}`] = {}
@@ -115,5 +128,5 @@ export class PolyfillObjectMixin {
 
 PolyfillObjectMixin.sNotNeeded          = Symbol('sNotNeeded');
 PolyfillObjectMixin.sUninstalled        = Symbol('sUninstalled');
-PolyfillObjectMixin.sNoLongerCompatile  = Symbol('sNoLongerCompatile');
+PolyfillObjectMixin.sNoLongerCompatible  = Symbol('sNoLongerCompatible');
 PolyfillObjectMixin.sInstalled          = Symbol('sInstalled');

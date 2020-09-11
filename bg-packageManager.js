@@ -4,6 +4,8 @@ import { BGFeedbackDialog }      from './miscellaneous'
 import { Disposables }           from './Disposables'
 import { exec, spawn, execSync } from 'child_process';
 
+// TODO: refactor this to use PolyfillObjectMixin class
+
 // this is a hack to subclass the atom.packages instance with proposed features.
 // atom.packages is untouched
 // atom2.packages is same as atom.packages but also has these extra methods
