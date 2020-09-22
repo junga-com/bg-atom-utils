@@ -14,7 +14,6 @@ import { FirstParamOf } from './miscellaneous';
 //    lastSessionsState    : contains the deserialization state passed from the atom activate call
 //    disposables          : an instance of Disposables to add things that need to be undone in destroy
 //    addCommand()         : wrapper to atom.commands.add(). associates the commands with this plugin and unregisters them in deactivate
-//    watchConfig()        : get notified when a configKey's value changes
 //    watchPackages()      : get notified when a package's activation state changes
 // Plugin Registry:
 //    window.bgPlgins['my-plugin']  : other packages and user init.js can find your package's services dynamically
@@ -33,6 +32,14 @@ export class BGAtomPlugin {
 	static Initialize() {
 	}
 
+	static get(pkgName) {return BGAtomPlugin.instances.get(pkgName)}
+
+	static logStatus() {
+		for (const [pkgName, plugin] of BGAtomPlugin.instances) {
+			console.log(pkgName.padEnd(25)+": cmd registered="+plugin.registeredCommands.size);
+		}
+	}
+
 	// usage: pkgName, lastSessionsState
 	constructor(...p) {
 		this.pkgName = FirstParamOf('string', ...p);
@@ -45,14 +52,13 @@ export class BGAtomPlugin {
 
 		// When the derived class uses our methods to create resources, they are tracked in these Maps and automatically disposed.
 		this.registeredCommands = new DisposableMap();
-		this.watchedConfig      = new DisposableMap();
 		this.watchedPacakges    = new DisposableMap();
 		this.watchedPreCmd      = new DisposableMap();
 		this.watchedPostCmd     = new DisposableMap();
 
 		console.assert(!this.PluginClass.instance, 'Package plugin being constructed twice. Should be a singleton. pacakgeName='+this.pkgName);
 		this.PluginClass.instance = this;
-		BGAtomPlugin.plugins[this.pkgName] = this;
+		BGAtomPlugin.instances.set(this.pkgName, this);
 
 		// if the derived class declares a lateActivate method, invoke it from the onDidActivateInitialPackages event
 
@@ -70,8 +76,10 @@ export class BGAtomPlugin {
 
 	destroy() {
 		// this.registeredCommands.forEach(v=>v.dispose()); this.registeredCommands.clear();
-		// this.watchedConfig.forEach(v=>v.dispose());      this.watchedConfig.clear();
 		// this.watchedPacakges.forEach(v=>v.dispose());    this.watchedPacakges.clear();
+
+		// remove all relationships involving this plugin
+		deps.objectDestroyed(this);
 
 		for (const name of Object.getOwnPropertyNames(this)) {
 			const prop = this[name];
@@ -82,7 +90,7 @@ export class BGAtomPlugin {
 		}
 
 		this.PluginClass.instance = null
-		delete BGAtomPlugin.plugins[this.pkgName];
+		delete BGAtomPlugin.instances.delete(this.pkgName);
 	}
 
 	serialize() {}
@@ -98,15 +106,10 @@ export class BGAtomPlugin {
 		callback && this.registeredCommands.set(name, atom.commands.add('atom-workspace', {[name]:callback}));
 	}
 
-	// callback gets invoked whenever thespecified configKey changes value
-	// call this with a null callback to stop watching
+
+	// OBSOLETE: use atom.config.addDep(configKeySpec, obj2, callback) instead
 	watchConfig(configKey, callback) {
-		const prevValue = this.watchedConfig.get(configKey);
-		if (prevValue) {
-			prevValue.dispose;
-			this.watchedConfig.delete(configKey)
-		}
-		callback && this.watchedConfig.set(configKey, atom.config.onDidChange(configKey, {}, callback));
+		console.assert(false,"BGAtomPlugin::watchConfig is OBSOLETE: use atom.config.addDep(configKeySpec, obj2, callback) instead")
 	}
 
 	// callback gets invoked whenever a specified pkgName changes activation state. Callback is passed the name of the package and
@@ -151,7 +154,7 @@ export class BGAtomPlugin {
 	}
 
 	// Use this static method to export your MyPluginClass that extends BGAtomPlugin
-	// export default BGAtomPlugin.Export(MyPluginClass)
+	// usage: export default BGAtomPlugin.Export(MyPluginClass)
 	static Export(PluginClass) {
 		return {
 			initialize: (...p) => {PluginClass.Initialize(PluginClass);},
@@ -171,6 +174,6 @@ class DisposableMap extends Map {
 	}
 }
 
-
-BGAtomPlugin.plugins = {};
-global.bgPlugins = BGAtomPlugin.plugins;
+if (typeof global.bg == 'undefined') global.bg = Object.create(null)
+BGAtomPlugin.instances = new Map();
+global.bg.BGAtomPlugin = BGAtomPlugin;

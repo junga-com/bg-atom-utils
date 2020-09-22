@@ -23,12 +23,22 @@ See the atom package bg-atom-packageDev (WIP) which (will) demonstrate how to us
   * class BGFeedbackDialog :  class for displaying feedback for long tasks
 
 ### Functions
-  * function WatchPackageStateChange(packageNames, callback)  : makes depending on other pkgs more convenient
   * function bgAsyncSleep(ms) : delay function to be used in sync functions
   * function FirstParamOf   : helper for overloaded function parameters
   * function ArrangeParamsByType   : helper for overloaded function parameters
-  * function GetConfigKeys         : query for all matching atom config keys
-  * function OnDidChangeAnyConfig  : watch for changes to multiple config keys at once
   * function DispatchCommand -- wrapper for atom.commands.dispatch on the active target
   * function BGRemoveKeybindings -- dynamically disable some keystroke from your package
-  * function BGFindWorkspaceItemFromURI -- get an open URI if one exists
+
+### Dynamic Patches (aka Atom polyfills)
+These are enhancements to the Atom API. The global objects or classes are patched to add or change methods.
+  * atom.config
+     * add removeSchema : there was already an addSchema but this addes the ability to undo what addSchema does at runtime.
+     * addDep : integrates with the DependentsGragh. alternative to onDidChange
+     * onDidChangeAny : enhancement to onDidChange that can register the callback on multiple keys at once and adds key to {key,newValue,oldValue}
+     * getConfigKeys : query the set of available config keys
+  * atom.workspace
+     * getItemByURI   : return the first WorkspaceItem that matches the uri
+     * getItemsByURI  : return all WorkspaceItems that matches the uri in an array
+     * hide           : enhances to be more flexible in matching uri
+  * atom.packages
+     * onDidPackageStateChange : watch both activate and deactivate for packages that match a pkgNameSpec

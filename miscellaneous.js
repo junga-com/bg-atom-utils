@@ -1,115 +1,16 @@
 
-import assert from 'assert';
-import { Component } from 'bg-atom-redom-ui';
-import { Disposables } from './Disposables';
-
-
-export class BGFeedbackDialog {
-	constructor(title, params) {
-		this.type = params.type || 'info';
-		if (!params.detail) params.detail = ' ';
-		switch (this.type) {
-			case 'success': this.dialogBox = atom.notifications.addSuccess(title, params); break;
-			case 'info':    this.dialogBox = atom.notifications.addInfo(title, params);    break;
-			case 'warn':    this.dialogBox = atom.notifications.addWarning(title, params); break;
-			case 'warning': this.dialogBox = atom.notifications.addWarning(title, params); break;
-			case 'error':   this.dialogBox = atom.notifications.addError(title, params);   break;
-			default:        assert(false,`unknown type ${this.type}`);                     break;
-		}
-
-		try {
-			this.statusArea = new Component('statusArea:$div')
-			this.progressBar = new Component('progressBar:$progress')
-
-			// The caller can specify status,current, and goal in addition to atom notification options
-			this.update(params)
-
-			this.el = atom.views.getView(this.dialogBox).element;
-			this.el.classList.add('BGFeedbackDialog');
-			this.title = this.el.querySelector('.message');
-			this.buttons = this.el.querySelector('.meta .btn-toolbar');
-			if (!this.buttons) {
-				const meta = this.el.querySelector('.meta');
-				this.buttons = new Component('$div.btn-toolbar').el;
-				meta.appendChild(this.buttons);
-				this.el.classList.add('has-buttons');
-			}
-
-			this.dialogDetailEl = this.el.querySelector('.detail-content');
-
-			Component.mount(this.dialogDetailEl, [
-				this.statusArea,
-				this.progressBar
-			])
-		} catch(e) {
-			this.dialogBox.dismiss();
-			throw e;
-		}
-	}
-
-	update({title, status, current, goal, buttons}) {
-		if (title != null)   this.setTitle(title)
-		if (status != null)  this.setStatus(status)
-		if (current != null) this.setCurrent(current)
-		if (goal != null)    this.setGoal(goal)
-		if (buttons != null) this.setButtons(buttons)
-
-		if ((status == null) && (current == null) && (goal == null))
-			this.setCurrent('++')
-	}
-
-	setTitle(title) {
-		this.title.innerText = title
-	}
-
-	setStatus(status) {
-		this.statusArea.setLabel(status)
-	}
-
-	hideProgress() {
-		this.progressBar.el.style.display = 'none'
-	}
-
-	setGoal(goal) {
-		this.progressBar.el.max = goal
-	}
-
-	setCurrent(current) {
-		if (!this.progressBar.el.max)
-			return
-		if (typeof current == "string") {
-			if (/[-+][0-9]+/.test(current))
-				this.progressBar.el.value += current;
-			else if (current == "++")
-				this.progressBar.el.value++;
-			else if (current == "--")
-				this.progressBar.el.value--;
-			else
-				this.progressBar.el.value = 0+current;
-		} else if (typeof current == "number")
-			this.progressBar.el.value = current;
-	}
-
-	setButtons(buttons) {
-		this.buttons.innerHTML = ''
-		for (const button of buttons) {
-			this.buttons.appendChild(new Component('$a.btn '+button.text, {
-				className: `btn-${this.type} ${button.className}`,
-				href: '#',
-				onclick: button.onDidClick
-			}).el)
-		}
-	}
-
-	dismiss() {
-		this.dialogBox.dismiss()
-	}
-}
 
 export function bgAsyncSleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// This supports functions and methods with flexible parameter order
+// It returns the first parameter in the call whose type matches <type>
+// Params:
+//    <type>  : can be a string name of a builtin type (string,number,boolan,bigint,symbol,undefined,object,function)
+//              or it can be a Class object to match an object of that type (aka MyClass js token, not the string 'MyClass')
+// See Also:
+//    ArrangeParamsByType
 export function FirstParamOf(type, ...params) {
 	if (typeof type == 'string')
 		// check for builtin types against this string value
@@ -127,82 +28,59 @@ export function FirstParamOf(type, ...params) {
 }
 
 
-// var [keyContainer, configKeyRegex, callback] = ArrangeParamsByType(arguments, 'string', RegExp, 'function');
+// This supports functions and methods with flexible parameter order
+// This only works if the parameter types make the identification unabiguous
+// Performance Warning:
+// There is a runtime cost associated with doing this so its not appropriate to use this pattern for a function or method that is
+// low level and likely to be called many times in a single transaction. For higher level APIs that are called at most a few time
+// per user interaction (aka transaction) the performance is neglible.
+// If the caller does pass all the params in the natural order, it will be very slightly faster but that may not be significant.
+// Example:
+//    // The 3 parameters to this function each are of a different type. They can be given in any order and the call to ArrangeParamsByType
+//    // will rearrange them if needed. Note that by convention, the input parameter names start with a $ to indicate the something
+//    // special is happening.
+//    function onDidChangeAny($keyContainer, $configKeyRegex, $callback) {
+//       var [keyContainer, configKeyRegex, callback] = ArrangeParamsByType(arguments, 'string', RegExp, 'function');
+//       ...
+// Params:
+//    <params> : an array of parameters to operate on. This would typically be the JS literal 'arguments' psuedo array variable
+//    ...<types> : list of types, that the params are expected to be, in the order that this function will order the results
+//                 Type can be a string with the name of a builtin type or a JS class token (See FirstParamOf)
+// See Also:
+//    FirstParamOf
 export function ArrangeParamsByType(params, ...types) {
+	// outer loop: goes through the types in order, placing the correct param in results from first to last. If there is no
+	//    matching param, the condition in the inner loop will not fire and that slot in result is left 'undefined'.
+	// inner loop: locates the param matching the current type and if found, sets it in the current results slot and removes that
+	//    param from params. If the param is on either end of params, pStart or pEnd is adjusted so that they are not even iterated
+	//    in future passes. If the params happen to be given in the natural order, this algorithm will be slightly faster (significant?)
 	var results = new Array(types.length);
-	eachParam: for (var i=0; i<params.length; i++) {
-		const paramType = typeof params[i];
-		for (var j=0; j<types.length; j++) {
-			if ((typeof types[j] == 'string' && paramType == types[j])
-			  || (typeof types[j] != 'string') && params[i] instanceof types[j] ) {
+	var pStart=0, pEnd=params.length;
+	eachType: for (var j=0; j<types.length; j++) {
+		for (var i=pStart; i<pEnd; i++) {
+			if ( (typeof types[j] == 'string') ? (typeof params[i] == types[j]) : (params[i] instanceof types[j]) ) {
+				// found it
 				results[j] = params[i];
-				continue eachParam;
+
+				// now remove params[i] from params so that its not considered anymore in future outter loop iterations
+				if (i==pStart)
+					pStart++;
+				else if (i==pEnd-1)
+					pEnd--
+				else
+					params[i]=undefined;
+
+				// done with this outer loop iteration
+				continue eachType;
 			}
 		}
 		results.push(params[i])
 	}
+
 	return results;
 }
 
 
-
-// Returns an array of configuration keys that are known at this time.
-// The results can be filtered by a specifying a keyContainer string and or a configKeyRegex RegExp.
-// Params:
-//    keyContainer:string   : example: 'editor.invisibles'. Only keys in the given container are returned. The default is all keys.
-//                            This is a '.' separated list of names starting with the package name then optionally followed by
-//                            one or more config object container names. Each name must be an exact match. No wildcards or regex.
-//                            If any name does not match, an empty array is returned.
-//    configKeyRegex:RegExp : example: /^bg-/. If given, only keys matching this regex are returns.
-// Usage:
-//    form1: GetConfigKeys(<keyContainer:string> [, <configKeyRegex:RegExp>])
-//    form2: GetConfigKeys(<configKeyRegex:RegExp> [, <keyContainer:string>])
-export function GetConfigKeys($keyContainer, $configKeyRegex) {
-	var keyContainer   = FirstParamOf('string',   $keyContainer, $configKeyRegex);
-	var configKeyRegex = FirstParamOf(RegExp,     $keyContainer, $configKeyRegex);
-
-	var outKeys = [];
-	function recurseObj(obj, prefix = '', filterRegex=null) {
-		var keys = Object.keys(obj)
-		keys.reduce( (outputKeys, curCfgItem) => {
-			const pre = prefix.length ? prefix + '.' : '';
-			if ((typeof obj[curCfgItem] === 'object') && ! Array.isArray(obj[curCfgItem]))
-				outputKeys.concat(recurseObj(obj[curCfgItem], pre + curCfgItem, filterRegex));
-			else {
-                if (!filterRegex || filterRegex.test(pre + curCfgItem))
-    				outputKeys.push(pre + curCfgItem);
-			}
-			return outputKeys;
-			}
-			, outKeys
-		);
-	}
-	var cfgToSearch = atom.config.getAll()[0].value;
-
-	if (keyContainer) {
-		for (const name of keyContainer.split('.')) {
-			if (!(name in cfgToSearch))
-				return outKeys;
-			cfgToSearch = cfgToSearch[name];
-		}
-	}
-
-	recurseObj(cfgToSearch, keyContainer, configKeyRegex)
-	return outKeys
-}
-
-// Usage:
-//    form1: OnDidChangeAnyConfig(<keyContainer:string> [, <configKeyRegex:RegExp>], <callback:function>)
-//    form2: OnDidChangeAnyConfig(<configKeyRegex:RegExp> [, <keyContainer:string>], <callback:function>)
-export function OnDidChangeAnyConfig(keyContainer, configKeyRegex, callback) {
-	var [keyContainer, configKeyRegex, callback] = ArrangeParamsByType(arguments, 'string', RegExp, 'function');
-	var disposables    = new Disposables();
-	var keys = GetConfigKeys(keyContainer, configKeyRegex);
-	assert(keys.length < 100, 'Registering callbacks on large sets of configuration keys (>100) is not supported');
-	for (const name of keys)
-		disposables.add(atom.config.onDidChange(name, {}, (e)=>{callback(name, e)}));
-	return disposables;
-}
 
 // DispatchCommand invokes <cmd> in the current active target environment.
 // The active WorkspaceItem is used if it exists, other wise atom.workspace is used.
@@ -238,47 +116,3 @@ export function BGRemoveKeybindings(sourceRegex, keystrokeRegex, selectorRegex, 
 	});
 	return removedCount;
 }
-
-
-
-
-// This return the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
-export function BGFindWorkspaceItemFromURI(uri) {
-	(typeof uri == 'string') && (uri = new RegExp('^'+uri))
-	const items = atom.workspace.getPaneItems();
-	return items.find((item)=>{return uri.test(item.getURI())});
-}
-
-export function BGHideWorkspaceItemFromURI(uri) {
-	(typeof uri == 'string') && (uri = new RegExp('^'+uri))
-	const items = atom.workspace.getPaneItems();
-	const item = items.find((item)=>{return uri.test(item.getURI())});
-	return item && atom.workspace.hide(item.getURI());
-}
-
-
-
-// OBSOLETE: use BGFeedbackDialog
-// export class BGFeedbackView {
-// 	constructor() {
-// 		// Create root element
-// 		this.rootElement = el('div.atom-cyto-message', "here, baby");
-// 		mount(document.body, this.rootElement);
-//
-// 		this.modalPanel = atom.workspace.addModalPanel({
-// 			item: this.rootElement,
-// 			visible: true
-// 		});
-// 	}
-//
-// 	setMessage(data) {
-// 		this.rootElement.textContent = data;
-// 	}
-//
-// 	isVisible() {this.modalPanel.isVisible()}
-// 	show()      {this.modalPanel.show()}
-// 	hide()      {this.modalPanel.hide()}
-// 	destroy()   {this.modalPanel.destroy();}
-//
-// 	serialize() {}
-// }
