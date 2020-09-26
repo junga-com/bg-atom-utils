@@ -1,4 +1,4 @@
-import { Component } from 'bg-atom-redom-ui';
+import { Component } from 'bg-dom';
 import { Disposables } from './Disposables';
 
 const defaultBGAtomViewOptions = {

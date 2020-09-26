@@ -1,16 +1,44 @@
 import { PolyfillObjectMixin }        from './PolyfillObjectMixin'
 import { ArrangeParamsByType }        from './miscellaneous'
 import { Disposables }                from './Disposables'
+import { ChannelNode }                from 'bg-dom'
+
+// <itemSpec> is a syntax to specify one or more matching item URI. It can be specified as a literal regex or as a string with the
+// following syntax. The string form allows embedding <itemSpec> in a larger DependentsGragh channel value.
+//      ''                         : empty string creates the regex /^/ that matches all item URI
+//      '/<expression>/[<flags>]'  : string representation of a regex is converted to its RegExp
+//      '<expression>'             : without the enclosing "/", it is converted to the regex /^<expression/ to matches URI starting
+//                                   with <expression>   e.g. 'atom://' will be interpretted as the regex /^atom:[/][/]/
+const ItemSpecStr = '([/](?<itemRe>.*)[/](?<itemFlags>[gmisuy]*)|(?<itemStr>.*))'
 
 
+
+// helper function for itemForURI, getItemByURI and getItemsByURI
+function URISpecToRegex(uriSpec) {
+	if (typeof uriSpec == 'string')
+		return new RegExp('^'+uriSpec);
+	if (!uriSpec)
+		return /^/;
+	if (typeof uriSpec == 'object' && uriSpec instanceof RegExp)
+		return uriSpec;
+	console.assert(false, 'malformed uriSpec in URISpecToRegex(uriSpec, uri)', {uriSpec})
+}
+
+// A PolyfillObjectMixin is a way to install dynamic patches to a JS object at runtime.  This pollyfill extends the atom.workspace
+// global object with new features.
+//   * addDep*, removeDep* family of functions are wrappers over the DependentsGragh system's global deps.add(),deps.remove() functions.
+//   * itemForURI is a missing method. You can get paneForURI and then <pane>.itemForURI but this lets you do it in one step
+//   * new functions that take a URI to match use a relaxed match so that the URI must only match the start of the item's URI
+//     Also can provide RexExp
 export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	constructor() {
 		super(
 			atom.workspace,
-			['_normalizeURISpec','_uriMatch','itemForURI','getItemByURI','getItemsByURI','hide',
-			 'addDep_items',      'removeDep_items',      'addDep_itemsOpenned',      'removeDep_itemsOpenned',      'addDep_itemsDestroyed', 'removeDep_itemsDestroyed', 'addDep_itemsActivated',      'removeDep_itemsActivated',
-			 'addDep_textEditors','removeDep_textEditors','addDep_textEditorsOpenned','removeDep_textEditorsOpenned',                                                     'addDep_textEditorsActivated','removeDep_textEditorsActivated',
-			 'addDep_panes',      'removeDep_panes',      'addDep_panesOpenned',      'removeDep_panesOpenned',      'addDep_panesDestroyed', 'removeDep_panesDestroyed', 'addDep_panesActivated',      'removeDep_panesActivated'
+			['itemForURI','getItemByURI','getItemsByURI','hide',
+			 'getChannel','addDep','removeDep',
+			 'addDep_item',      'removeDep_item',      'addDep_itemOpenned',      'removeDep_itemOpenned',      'addDep_itemDestroyed','removeDep_itemDestroyed', 'addDep_itemActivated',      'removeDep_itemActivated',       ,'addDep_itemDeactivated',      'removeDep_itemDeactivated',
+			 'addDep_textEditor','removeDep_textEditor','addDep_textEditorOpenned','removeDep_textEditorOpenned',                                                  'addDep_textEditorActivated','removeDep_textEditorActivated', ,'addDep_textEditorDeactivated','removeDep_textEditorDeactivated',
+			 'addDep_pane',      'removeDep_pane',      'addDep_paneOpenned',      'removeDep_paneOpenned',      'addDep_paneDestroyed','removeDep_paneDestroyed', 'addDep_paneActivated',      'removeDep_paneActivated',       ,'addDep_paneDeactivated',      'removeDep_paneDeactivated'
 			]
 		);
 	}
@@ -26,17 +54,25 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	// available as orig_<methodName>
 	// The 'this' pointer of these methods will be the target object, not the polyfill object when they are invoked.
 
+	// return the normalized DependentsGragh channel that represents the passed in values.
 	// Params:
-	//    <uriSpec>  : uriSpec is a regex that matches uri's. If it is specified as a string, it will be converted to a RegExp
-	//                 prepending a '^' to match the string at the start of the uri. The string can contain regex expresssions
-	_normalizeURISpec(uriSpec) {
-		(typeof uriSpec == 'string') && (uriSpec = new RegExp('^'+uriSpec))
-		return uriSpec;
+	//    <objType>    : one of (item|textEditor|pane). The type of workspace object to be dependent on.
+	//    <actionType> : one of (<emptyString>|openned|destroyed|activated|deactivated) The action on <objType> to be dependent on
+	//    <uriSpec>    : limit the dependency relationship to changes to <objTypes> that match uriSpec.
+	//                 uriSpec can be a RegExp object or the string representation of a RegExp object (like '/<exp>/[<flags>]')
+	//                 if uriSpec is a string not matching the RegExp syntax, <objType> URI that start with that string will be matched.
+	getChannel(objType, actionType, uriSpec) {
+		if (!objType)
+			return deps.fAll;
+		var channel = objType;
+		if (uriSpec && uriSpec!='/^/') {
+			channel += '('+uriSpec.toString()+')'
+		}
+		if (actionType)
+			channel += '.'+actionType
+		return channel;
 	}
 
-	_uriMatch(uriSpec, uri) {
-		return this._normalizeURISpec(uriSpec).test(uri)
-	}
 
 	// This return the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
 	// If <uri> matches multiple items, only the first found will be returned. (See getItemsByURI(uri))
@@ -48,7 +84,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//            prefix to match. e.g. 'atom://config' will match 'atom://config/bg-tree-view-toolbar'
 	itemForURI(uriSpec) {return this.getItemByURI(uriSpec)}
 	getItemByURI(uriSpec) {
-		uriSpec = this._normalizeURISpec(uriSpec)
+		uriSpec = URISpecToRegex(uriSpec)
 		const items = atom.workspace.getPaneItems();
 		return items.find((item)=>{return uriSpec.test(item.getURI())});
 	}
@@ -60,7 +96,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//    <uri> : a string or RegExp that will match the uri of the items to hide. A string will be interpretted as the leteral
 	//            prefix to match. e.g. 'atom://config' will match 'atom://config/bg-tree-view-toolbar'
 	getItemsByURI(uriSpec) {
-		uriSpec = this._normalizeURISpec(uriSpec)
+		uriSpec = URISpecToRegex(uriSpec)
 		const items = atom.workspace.getPaneItems();
 		return items.filter((item)=>{return uriSpec.test(item.getURI())});
 	}
@@ -77,8 +113,44 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 			this.orig_hide(item.getURI());
 	}
 
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// DependentsGragh Integration:
+	//    The following methods provide wrappers over deps.add(... ) and deps.remove(... ). This is just syntaxic sugar that makes
+	//    it more obvious to users of the atom.workspace how to make their objects dependent on atom.workspace changes and which
+	//    channels can be declared dependence on.
+	//    At the bottom of this module is the AtomWorkspaceChannelNode class which is the actual integration that ties Atom's Event
+	//    Subscription model into the DependentsGragh system.
+	//
+	//    The significant difference in using these methods to subscribe to changes rather than the ::on<somthing> methods is that
+	//    you do not have to store disposable objects to later remove the subscription. Because the addDep... family of functions
+	//    declare a dependency between two objects, when either one is removed from the DependentsGragh system, the subscription
+	//    will be canceled. It also means that the subscription is uniquely identified by {obj1,channel,obj2} so calling the
+	//    coresponding removeDep<...> function with the same parameters will remove just that one subscription.
+	//
+	//    These wrapper are more terse than calling the deps system directly....
+	// 	     atom.workspace.addDep_itemOpenned(uriSpec, obj2, callback);
+	//           ... is the same as ...
+	//       deps.add({obj:atom.workspace,channel:atom.workspace.getChannel('item', 'openned', uriSpec)  }, obj2, callback);
 
 
+	// <obj2>.onWorkspaceChanged(<objType>, <actionType>, <obj>, ...)
+	// callback(<objType>, <actionType>, <obj>, ...)
+	// callback('item',       'openned',     <item>,   <pane>, <index>)
+	// callback('item',       'destroyed',   <item>,   <pane>, <index>)
+	// callback('item',       'activated',   <item>,   <previousActiveItem>)
+	// callback('item',       'deactivated', <item>,   <newActiveItem>)
+	// callback('textEditor', 'openned',     <editor>, <pane>, <index>)
+	// callback('textEditor', 'activated',   <editor>, <previousActiveEditor>)
+	// callback('textEditor', 'deactivated', <editor>, <newActiveEditor>)
+	// callback('pane',       'openned'      <pane>)
+	// callback('pane',       'destroyed'    <pane>)
+	// callback('pane',       'activated'    <pane>,   <previousActivePane>)
+	// callback('pane',       'deactivated'  <pane>,   <newActivePane>)
+	addDep(   obj2, callback) {deps.add(   this, obj2, callback);}
+	removeDep(obj2)           {deps.remove(this, obj2);}
+
+
+	// <obj2>.onWorkspaceItemChanged(<actionType>, <item>, ...)
 	// callback('openned',     <item>, <pane>, <index>)
 	// callback('destroyed',   <item>, <pane>, <index>)
 	// callback('activated',   <item>, <previousActiveItem>)
@@ -87,411 +159,306 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//    <item> : is the item matching the uriSpec
 	//    <pane> : is the workspace pane that contains <item>
 	//    <index>: is the index of <item> in <pane>.items
-	addDep_items(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'');
+	addDep_item(   uriSpec, obj2, callback)            {deps.add(   {obj:this,  channel:this.getChannel('item', '', uriSpec)  }, obj2, callback);}
+	removeDep_item(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('item', '', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemChanged';
-			cnode.lastActiveItem = this.activePaneContainer.getActivePaneItem();
-			cnode.disposables.add(this.onDidOpen((event)=>{
-				if (uriSpec.test(event.uri))
-					deps.fire({obj:this,channel}, 'openned', event.item, event.pane, event.index)
-			}))
-			cnode.disposables.add(this.onDidDestroyPaneItem((event)=>{
-				if (uriSpec.test(event.item.getURI()))
-					deps.fire({obj:this,channel}, 'destroyed', event.item, event.pane, event.index)
-			}))
-			cnode.disposables.add(this.onDidChangeActivePaneItem((item)=>{
-				if (cnode.lastActiveItem && uriSpec.test(cnode.lastActiveItem.getURI()))
-					deps.fire({obj:this,channel}, 'deactivated', cnode.lastActiveItem, item);
-				if (uriSpec.test(item.getURI()))
-					deps.fire({obj:this,channel}, 'activated',   item, cnode.lastActiveItem);
-				cnode.lastActiveItem = item;
-			}))
-		}
-	}
-	removeDep_items(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'');
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceItemOpenned(<item>, <pane>, <index>)
 	// callback(<opennedItem>, <pane>, <index>)
-	addDep_itemsOpenned(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.openned';
+	addDep_itemOpenned(   uriSpec, obj2, callback)     {deps.add(   {obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2, callback);}
+	removeDep_itemOpenned(uriSpec, obj2)               {deps.remove({obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemOpenned';
-			cnode.disposables.add(this.onDidOpen((event)=>{
-				if (uriSpec.test(event.uri))
-					deps.fire({obj:this,channel}, event.item, event.pane, event.index)
-			}))
-		}
-	}
-	removeDep_itemsOpenned(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.openned';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceItemDestroyed(<item>, <pane>, <index>)
 	// callback(<destroyedItem>, <pane>, <index>)
-	addDep_itemsDestroyed(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.destroyed';
+	addDep_itemDestroyed(   uriSpec, obj2, callback)   {deps.add(   {obj:this,  channel:this.getChannel('item', 'destroyed', uriSpec)  }, obj2, callback);}
+	removeDep_itemDestroyed(uriSpec, obj2)             {deps.remove({obj:this,  channel:this.getChannel('item', 'destroyed', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemDestroyed';
-			cnode.disposables.add(this.onDidDestroyPaneItem((event)=>{
-				if (uriSpec.test(event.item.getURI()))
-					deps.fire({obj:this,channel}, event.item, event.pane, event.index);
-			}))
-		}
-	}
-	removeDep_itemsDestroyed(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.destroyed';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
-	// callback('activated',   <item>, <previousActiveItem>)
-	// callback('deactivated', <item>, <newActiveItem>)
-	addDep_itemsActivationChange(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activationChange';
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemActivationChange';
-			cnode.lastActiveItem = this.activePaneContainer.getActivePaneItem();
-			cnode.disposables.add(this.onDidChangeActivePaneItem((item)=>{
-				if (cnode.lastActiveItem && uriSpec.test(cnode.lastActiveItem.getURI()))
-					deps.fire({obj:this,channel}, 'deactivated', cnode.lastActiveItem, item);
-				if (uriSpec.test(item.getURI()))
-					deps.fire({obj:this,channel}, 'activated',   item, cnode.lastActiveItem);
-				cnode.lastActiveItem = item;
-			}))
-		}
-	}
-	removeDep_itemsActivationChange(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activationChange';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceItemActivated(<item>, <previousActiveItem>)
 	// callback(<activateditem>, <previousActiveItem>)
-	addDep_itemsActivated(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activated';
+	addDep_itemActivated(   uriSpec, obj2, callback)   {deps.add(   {obj:this,  channel:this.getChannel('item', 'activated', uriSpec)  }, obj2, callback);}
+	removeDep_itemActivated(uriSpec, obj2)             {deps.remove({obj:this,  channel:this.getChannel('item', 'activated', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemActivated';
-			cnode.lastActiveItem = this.activePaneContainer.getActivePaneItem();
-			cnode.disposables.add(this.onDidChangeActivePaneItem((item)=>{
-				if (uriSpec.test(item.getURI()))
-					deps.fire({obj:this,channel}, item, cnode.lastActiveItem);
-				cnode.lastActiveItem = item;
-			}))
-		}
-	}
-	removeDep_itemsActivated(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activated';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceItemDeactivated(<item>, <newActiveItem>)
 	// callback(<deactivateditem>, <newActiveItem>)
-	addDep_itemsDeactivated(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.deactivated';
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onWorkspaceItemDeactivated';
-			cnode.lastActiveItem = this.activePaneContainer.getActivePaneItem();
-			cnode.disposables.add(this.onDidChangeActivePaneItem((item)=>{
-				if (cnode.lastActiveItem && uriSpec.test(cnode.lastActiveItem.getURI()))
-					deps.fire({obj:this,channel}, cnode.lastActiveItem, item);
-				cnode.lastActiveItem = item;
-			}))
-		}
-	}
-	removeDep_itemsDeactivated(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'items'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.deactivated';
-		deps.remove({obj:this,channel}, obj2);
-	}
+	addDep_itemDeactivated(   uriSpec, obj2, callback) {deps.add(   {obj:this,  channel:this.getChannel('item', 'deactivated', uriSpec)  }, obj2, callback);}
+	removeDep_itemDeactivated(uriSpec, obj2)           {deps.remove({obj:this,  channel:this.getChannel('item', 'deactivated', uriSpec)  }, obj2);}
 
 
-
-
-
-
+	// <obj2>.onWorkspaceTextEditorChanged(<actionType>, <editor>, ...)
 	// callback('openned',     <editor>, <pane>, <index>)
 	// callback('activated',   <editor>, <previousActiveEditor>)
 	// callback('deactivated', <editor>, <newActiveEditor>)
-	addDep_textEditors(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'');
+	addDep_textEditor(   uriSpec, obj2, callback)            {deps.add(   {obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2, callback);}
+	removeDep_textEditor(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onTextEditorChanged';
-			cnode.lastActiveEditor = this.getActiveTextEditor();
-			cnode.disposables.add(this.onDidAddTextEditor((event)=>{
-				if (uriSpec.test(event.textEditor.getURI()))
-					deps.fire({obj:this,channel}, {type:'openned',...event, editor:event.textEditor})
-			}))
-			cnode.disposables.add(this.onDidChangeActiveTextEditor((editor)=>{
-				if (cnode.lastActiveEditor && uriSpec.test(cnode.lastActiveEditor.getURI()))
-					deps.fire({obj:this,channel}, 'deactivated', cnode.lastActiveEditor, editor)
-				if (uriSpec.test(editor.getURI()))
-					deps.fire({obj:this,channel}, 'activated',   editor, cnode.lastActiveEditor)
-				cnode.lastActiveEditor = editor;
-			}))
-		}
-	}
-	removeDep_textEditors(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'');
-		deps.remove({obj:this,channel}, obj2);
-	}
-
+	// <obj2>.onWorkspaceTextEditorOpenned(<editor>, <pane>, <index>)
 	// callback(<opennedEditor>, <pane>, <index>)
-	addDep_textEditorsOpenned(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.openned';
+	addDep_textEditorOpenned(   uriSpec, obj2, callback)     {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2, callback);}
+	removeDep_textEditorOpenned(uriSpec, obj2)               {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onTextEditorOpenned';
-			cnode.disposables.add(this.onDidAddTextEditor((event)=>{
-				if (uriSpec.test(event.textEditor.getURI()))
-					deps.fire({obj:this,channel}, event.textEditor, event.pane, event.index)
-			}))
-		}
-	}
-	removeDep_textEditorsOpenned(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.openned';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-	// callback('activated',   <editor>, <previousActiveEditor>)
-	// callback('deactivated', <editor>, <newActiveEditor>)
-	addDep_textEditorsActivationChanged(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activationChanged';
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onTextEditorActivationChanged';
-			cnode.lastActiveEditor = this.getActiveTextEditor();
-			cnode.disposables.add(this.onDidChangeActiveTextEditor((editor)=>{
-				if (cnode.lastActiveEditor && uriSpec.test(cnode.lastActiveEditor.getURI()))
-					deps.fire({obj:this,channel}, 'deactivated', cnode.lastActiveEditor, editor)
-				if (uriSpec.test(editor.getURI()))
-					deps.fire({obj:this,channel}, 'activated',   editor, cnode.lastActiveEditor)
-				cnode.lastActiveEditor = editor;
-			}))
-		}
-	}
-	removeDep_textEditorsActivationChanged(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activationChanged';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
+	// <obj2>.onWorkspaceTextEditorActivated(<editor>, <previousActiveEditor>)
 	// callback(<activatedEditor>, <previousActiveEditor>)
-	addDep_textEditorsActivated(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activated';
+	addDep_textEditorActivated(   uriSpec, obj2, callback)   {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'activated', uriSpec)  }, obj2, callback);}
+	removeDep_textEditorActivated(uriSpec, obj2)             {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'activated', uriSpec)  }, obj2);}
 
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onTextEditorActivated';
-			cnode.lastActiveEditor = this.getActiveTextEditor();
-			cnode.disposables.add(this.onDidChangeActiveTextEditor((editor)=>{
-				if (uriSpec.test(editor.getURI()))
-					deps.fire({obj:this,channel}, editor, cnode.lastActiveEditor)
-				cnode.lastActiveEditor = editor;
-			}))
-		}
-	}
-	removeDep_textEditorsActivated(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.activated';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
+	// <obj2>.onWorkspaceTextEditorDeactivated(<editor>, <newActiveEditor>)
 	// callback(<deactivatedEditor>, <newActiveEditor>)
-	addDep_textEditorsDeactivated(uriSpec, obj2, callback) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.deactivated';
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onTextEditorDeactivated';
-			cnode.lastActiveEditor = this.getActiveTextEditor();
-			cnode.disposables.add(this.onDidChangeActiveTextEditor((editor)=>{
-				if (cnode.lastActiveEditor && uriSpec.test(cnode.lastActiveEditor.getURI()))
-					deps.fire({obj:this,channel}, cnode.lastActiveEditor, editor)
-				cnode.lastActiveEditor = editor;
-			}))
-		}
-	}
-	removeDep_textEditorsDeactivated(uriSpec, obj2) {
-		uriSpec = this._normalizeURISpec(uriSpec)
-		const channel = 'textEditors'+((uriSpec!='/^/')?`(${uriSpec})`:'')+'.deactivated';
-		deps.remove({obj:this,channel}, obj2);
-	}
+	addDep_textEditorDeactivated(   uriSpec, obj2, callback) {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'deactivated', uriSpec)  }, obj2, callback);}
+	removeDep_textEditorDeactivated(uriSpec, obj2)           {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'deactivated', uriSpec)  }, obj2);}
 
 
-
-
-
-
-
+	// <obj2>.onWorkspaceTextPaneChanged(<actionType>, <pane>, ...)
 	// callback('openned'    <pane>)
 	// callback('destroyed'  <pane>)
 	// callback('activated'  <pane>, <previousActivePane>)
-	// callback('dectivated' <pane>, <newActivePane>)
-	addDep_panes(obj2, callback) {
-		const channel = 'panes';
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
+	// callback('deactivated' <pane>, <newActivePane>)
+	addDep_pane(   obj2, callback)            {deps.add(   {obj:this,  channel:'panes'  }, obj2, callback);}
+	removeDep_pane(obj2)                      {deps.remove({obj:this,  channel:'panes'  }, obj2);}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPaneChanged';
-			cnode.lastActivePane = this.activePaneContainer.getActivePane();
-			cnode.disposables.add(this.onDidAddPane((event)=>{
-				deps.fire({obj:this,channel}, 'openned', event.pane)
-			}))
-			cnode.disposables.add(this.onDidDestroyPane((event)=>{
-				deps.fire({obj:this,channel}, 'destroyed', event.pane)
-			}))
-			cnode.disposables.add(this.onDidChangeActivePane((event)=>{
-				cnode.lastActivePane && deps.fire({obj:this,channel}, 'deactivated', cnode.lastActivePane, event.pane);
-				deps.fire({obj:this,channel}, 'activated',   event.pane, cnode.lastActivePane);
-				cnode.lastActivePane = event.pane;
-			}))
-		}
-	}
-	removeDep_panes(obj2) {
-		const channel = 'panes';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceTextPaneOpenned(<pane>)
 	// callback(<opennedPane>)
-	addDep_panesOpenned(obj2, callback) {
-		const channel = 'panes.openned';
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
+	addDep_paneOpenned(   obj2, callback)     {deps.add({obj:this,     channel:'panes.openned'  }, obj2, callback);}
+	removeDep_paneOpenned(obj2)               {deps.remove({obj:this,  channel:'panes.openned'  }, obj2);}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPaneOpenned';
-			cnode.disposables.add(this.onDidAddPane((event)=>{
-				deps.fire({obj:this,channel}, event.pane)
-			}))
-		}
-	}
-	removeDep_panesOpenned(obj2) {
-		const channel = 'panes.openned';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceTextPaneDestroyed(<pane>)
 	// callback(<destroyedPane>)
-	addDep_panesDestroyed(obj2, callback) {
-		const channel = 'panes.destroyed';
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
+	addDep_paneDestroyed(   obj2, callback)   {deps.add({obj:this,     channel:'panes.destroyed'  }, obj2, callback);}
+	removeDep_paneDestroyed(obj2)             {deps.remove({obj:this,  channel:'panes.destroyed'  }, obj2);}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPaneDestroyed';
-			cnode.disposables.add(this.onDidDestroyPane((event)=>{
-				deps.fire({obj:this,channel}, event.pane)
-			}))
-		}
-	}
-	removeDep_panesDestroyed(obj2) {
-		const channel = 'panes.destroyed';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
-
+	// <obj2>.onWorkspaceTextPaneActivated(<pane>, <previousActivePane>)
 	// callback(<activatedPane>, <previousActivePane>)
-	addDep_panesActivated(obj2, callback) {
-		const channel = 'panes.activated';
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
+	addDep_paneActivated(   obj2, callback)   {deps.add({obj:this,     channel:'panes.activated'  }, obj2, callback);}
+	removeDep_paneActivated(obj2)             {deps.remove({obj:this,  channel:'panes.activated'  }, obj2);}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPaneActivated';
-			cnode.lastActivePane = this.activePaneContainer.getActivePane();
-			cnode.disposables.add(this.onDidChangeActivePane((event)=>{
-				deps.fire({obj:this,channel}, event.pane, cnode.lastActivePane)
-				cnode.lastActivePane = event.pane;
-			}))
-		}
-	}
-	removeDep_panesActivated(obj2) {
-		const channel = 'panes.activated';
-		deps.remove({obj:this,channel}, obj2);
-	}
-
+	// <obj2>.onWorkspaceTextPaneDeactivated(<pane>, <newActivePane>)
 	// callback(<deactivatedPane>, <newActivePane>)
-	addDep_panesDeactivated(obj2, callback) {
-		const channel = 'panes.deactivated';
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
+	addDep_paneDeactivated(   obj2, callback) {deps.add({obj:this,     channel:'panes.deactivated'  }, obj2, callback);}
+	removeDep_paneDeactivated(obj2)           {deps.remove({obj:this,  channel:'panes.deactivated'  }, obj2);}
+}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPaneDeactivated';
-			cnode.lastActivePane = this.activePaneContainer.getActivePane();
-			cnode.disposables.add(this.onDidChangeActivePane((event)=>{
-				cnode.lastActivePane && deps.fire({obj:this,channel}, cnode.lastActivePane, event.pane)
-				cnode.lastActivePane = event.pane;
-			}))
+
+
+
+
+// Integration with DependentsGragh System
+// This registers a custom ChannelNode type in the DependentsGragh system so that it can manage the integration with atom.workspace
+// Event Subscriptions. When a dependency relationship is added with atom.workspace as the source object, this specific Class of
+// ChannelNode will be created so that it can interpret the channel and create the correct atom.workspace Event Subscriptions to
+// fire the relationship when needed. When the last relationship of that channel is removed, those atom.workspace Event Subscriptions
+// will be disposed.
+class AtomWorkspaceChannelNode extends ChannelNode {
+	// in this case we made one class that works with all channel of the atom.workspace object so we do not consider channel in the match
+	static matchSource(obj1,channel) {return obj1===atom.workspace}
+	static resolveChannel(channel) {
+		if (channel === deps.fAll)
+			return {channelType:'all', channelAction:'', itemSpec:''};
+		else {
+			const rematch = AtomWorkspaceChannelNode.channelRegex.exec((channel)?channel.toString():'');
+			if (!rematch) return {};
+			const { channelType, channelAction='' } = rematch.groups
+			const itemSpec = new RegExp(
+				(rematch.groups.itemRe)
+					? rematch.groups.itemRe
+					: (rematch.groups.itemStr)
+						? '^'+rematch.groups.itemStr
+						:'^',
+				rematch.groups.itemFlags
+			);
+
+			return {channelType, channelAction, itemSpec}
 		}
 	}
-	removeDep_panesDeactivated(obj2) {
-		const channel = 'panes.deactivated';
-		deps.remove({obj:this,channel}, obj2);
+
+	constructor(obj, channel) {
+		super(obj, channel);
+
+		const { channelType, channelAction, itemSpec} = AtomWorkspaceChannelNode.resolveChannel(channel);
+
+		if (!channelType) {
+			console.assert(false, 'malformed DependentsGragh channel for atom.workspace', {obj,channel});
+			throw 'malformed DependentsGragh channel for atom.workspace';
+		}
+
+		switch (channelType) {
+			case 'item':
+				this.lastActiveItem = obj.activePaneContainer.getActivePaneItem();
+				switch (channelAction) {
+					case 'openned':
+						this.defaultTargetMethodName = 'onWorkspaceItemOpenned';
+						this.disposables.add(obj.onDidOpen((event)=>{
+							if (itemSpec.test(event.uri))
+								deps.fire({obj,channel}, event.item, event.pane, event.index)
+						}))
+						break;
+					case 'destroyed':
+						this.defaultTargetMethodName = 'onWorkspaceItemDestroyed';
+						this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
+							if (itemSpec.test(event.item.getURI()))
+								deps.fire({obj,channel}, 'destroyed', event.item, event.pane, event.index)
+						}))
+						break;
+					case 'activated':
+						this.defaultTargetMethodName = 'onWorkspaceItemActivated';
+						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
+							if (item && itemSpec.test(item.getURI()))
+								deps.fire({obj,channel}, 'activated',   item, this.lastActiveItem);
+							this.lastActiveItem = item;
+						}))
+						break;
+					case 'deactivated':
+						this.defaultTargetMethodName = 'onWorkspaceItemDeactivated';
+						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
+							if (this.lastActiveItem && itemSpec.test(this.lastActiveItem.getURI()))
+								deps.fire({obj,channel}, 'deactivated', this.lastActiveItem, item);
+							this.lastActiveItem = item;
+						}))
+						break;
+					default:
+						this.defaultTargetMethodName = 'onWorkspaceItemChanged';
+						this.disposables.add(obj.onDidOpen((event)=>{
+							if (itemSpec.test(event.uri))
+								deps.fire({obj,channel}, 'openned', event.item, event.pane, event.index)
+						}))
+						this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
+							if (itemSpec.test(event.item.getURI()))
+								deps.fire({obj,channel}, 'destroyed', event.item, event.pane, event.index)
+						}))
+						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
+							if (this.lastActiveItem && itemSpec.test(this.lastActiveItem.getURI()))
+								deps.fire({obj,channel}, 'deactivated', this.lastActiveItem, item);
+							if (item && itemSpec.test(item.getURI()))
+								deps.fire({obj,channel}, 'activated',   item, this.lastActiveItem);
+							this.lastActiveItem = item;
+						}))
+				}
+				break;
+
+			case 'textEditor':
+				this.lastActiveEditor = obj.getActiveTextEditor();
+				switch (channelAction) {
+					case 'openned':
+						this.defaultTargetMethodName = 'onTextEditorOpenned';
+						this.disposables.add(obj.onDidAddTextEditor((event)=>{
+							if (itemSpec.test(event.textEditor.getURI()))
+								deps.fire({obj,channel}, event.textEditor, event.pane, event.index)
+						}))
+						break;
+					case 'activated':
+						this.defaultTargetMethodName = 'onTextEditorActivated';
+						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
+							if (itemSpec.test(editor.getURI()))
+								deps.fire({obj,channel}, editor, this.lastActiveEditor)
+							this.lastActiveEditor = editor;
+						}))
+						break;
+					case 'deactivated':
+						this.defaultTargetMethodName = 'onTextEditorDeactivated';
+						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
+							if (this.lastActiveEditor && itemSpec.test(this.lastActiveEditor.getURI()))
+								deps.fire({obj,channel}, this.lastActiveEditor, editor)
+							this.lastActiveEditor = editor;
+						}))
+						break;
+					default:
+						this.defaultTargetMethodName = 'onTextEditorChanged';
+						this.disposables.add(obj.onDidAddTextEditor((event)=>{
+							if (itemSpec.test(event.textEditor.getURI()))
+								deps.fire({obj,channel}, 'openned', event.textEditor, event.pane, event.index)
+						}))
+						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
+							if (this.lastActiveEditor && itemSpec.test(this.lastActiveEditor.getURI()))
+								deps.fire({obj,channel}, 'deactivated', this.lastActiveEditor, editor)
+							if (itemSpec.test(editor.getURI()))
+								deps.fire({obj,channel}, 'activated',   editor, this.lastActiveEditor)
+							this.lastActiveEditor = editor;
+						}))
+				}
+				break;
+			case 'pane':
+				this.lastActivePane = obj.activePaneContainer.getActivePane();
+				switch (channelAction) {
+					case 'openned':
+						this.defaultTargetMethodName = 'onPaneOpenned';
+						this.disposables.add(obj.onDidAddPane((event)=>{
+							deps.fire({obj,channel}, event.pane)
+						}))
+						break;
+					case 'destroyed':
+						this.defaultTargetMethodName = 'onPaneDestroyed';
+						this.disposables.add(obj.onDidDestroyPane((event)=>{
+							deps.fire({obj,channel}, event.pane)
+						}))
+						break;
+					case 'activated':
+						this.defaultTargetMethodName = 'onPaneActivated';
+						this.disposables.add(obj.onDidChangeActivePane((pane)=>{
+							deps.fire({obj,channel}, pane, this.lastActivePane);
+							this.lastActivePane = pane;
+						}))
+						break;
+					case 'deactivated':
+						this.defaultTargetMethodName = 'onPaneDeactivated';
+						this.disposables.add(obj.onDidChangeActivePane((pane)=>{
+							this.lastActivePane && deps.fire({obj,channel}, this.lastActivePane, pane);
+							this.lastActivePane = pane;
+						}))
+						break;
+					default:
+						this.defaultTargetMethodName = 'onPaneChanged';
+						this.disposables.add(obj.onDidAddPane((event)=>{
+							deps.fire({obj,channel}, 'openned', event.pane)
+						}))
+						this.disposables.add(obj.onDidDestroyPane((event)=>{
+							deps.fire({obj,channel}, 'destroyed', event.pane)
+						}))
+						this.disposables.add(obj.onDidChangeActivePane((pane)=>{
+							this.lastActivePane && deps.fire({obj,channel}, 'deactivated', this.lastActivePane, pane);
+							deps.fire({obj,channel}, 'activated',   pane, this.lastActivePane);
+							this.lastActivePane = pane;
+						}))
+				}
+				break;
+			case 'all':
+				this.defaultTargetMethodName = 'onWorkspaceChanged';
+				this.lastActiveItem   = obj.activePaneContainer.getActivePaneItem();
+				this.lastActiveEditor = obj.getActiveTextEditor();
+				this.lastActivePane   = obj.activePaneContainer.getActivePane();
+				this.disposables.add(obj.onDidOpen((event)=>{
+					deps.fire({obj,channel}, 'item', 'openned', event.item, event.pane, event.index)
+				}))
+				this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
+					deps.fire({obj,channel}, 'item', 'destroyed', event.item, event.pane, event.index)
+				}))
+				this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
+					this.lastActiveItem && deps.fire({obj,channel}, 'item', 'deactivated', this.lastActiveItem, item);
+					item && deps.fire({obj,channel}, 'item', 'activated',   item, this.lastActiveItem);
+					this.lastActiveItem = item;
+				}))
+				this.disposables.add(obj.onDidAddTextEditor((event)=>{
+					deps.fire({obj,channel}, 'textEditor', 'openned', event.textEditor, event.pane, event.index)
+				}))
+				this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
+					this.lastActiveEditor && deps.fire({obj,channel}, 'textEditor', 'deactivated', this.lastActiveEditor, editor)
+					deps.fire({obj,channel}, 'textEditor', 'activated',   editor, this.lastActiveEditor)
+					this.lastActiveEditor = editor;
+				}))
+				this.disposables.add(obj.onDidAddPane((event)=>{
+					deps.fire({obj,channel}, 'pane', 'openned', event.pane)
+				}))
+				this.disposables.add(obj.onDidDestroyPane((event)=>{
+					deps.fire({obj,channel}, 'pane', 'destroyed', event.pane)
+				}))
+				this.disposables.add(obj.onDidChangeActivePane((pane)=>{
+					this.lastActivePane && deps.fire({obj,channel}, 'pane', 'deactivated', this.lastActivePane, pane);
+					deps.fire({obj,channel}, 'pane', 'activated',   pane, this.lastActivePane);
+					this.lastActivePane = pane;
+				}))
+				break;
+			default:
+				console.assert(false,'logic error: channelType should have been resolved to one of item|textEditor|pane|all', {channelType});
+		}
 	}
 }
+AtomWorkspaceChannelNode.channelRegex = new RegExp(`^(?<channelType>item|pane|textEditor)(?:[(]${ItemSpecStr}[)])?(?:[.](?<channelAction>openned|destroyed|activated|deactivated))?$`);
+deps.registerCNodeClass(AtomWorkspaceChannelNode);
 
 new AtomWorkspacePolyfill().install();

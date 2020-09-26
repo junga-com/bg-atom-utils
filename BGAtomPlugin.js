@@ -81,9 +81,10 @@ export class BGAtomPlugin {
 		// remove all relationships involving this plugin
 		deps.objectDestroyed(this);
 
+		// if any direct member of the plugin object has a 'dispose' function, call it
 		for (const name of Object.getOwnPropertyNames(this)) {
 			const prop = this[name];
-			if (typeof prop == 'object' && typeof prop.dispose == 'function') {
+			if (prop && typeof prop == 'object' && typeof prop.dispose == 'function') {
 				//console.log(`!!!found ${name} to dispose`);
 				prop.dispose();
 			}

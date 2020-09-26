@@ -1,4 +1,4 @@
-import { DependentsGragh } from 'bg-atom-redom-ui'
+import { DependentsGragh } from 'bg-dom'
 
 const MoveModes = {
 	Normal      :'Normal',
