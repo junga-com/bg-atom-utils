@@ -1,10 +1,7 @@
-import { PolyfillObjectMixin }        from './PolyfillObjectMixin'
-import { ArrangeParamsByType }        from './miscellaneous'
-import { Disposables }                from './Disposables'
-import { ChannelNode }                from 'bg-dom'
+import { PolyfillObjectMixin,ArrangeParamsByType,Disposables,ChannelNode} from 'bg-dom'
 
 // <itemSpec> is a syntax to specify one or more matching item URI. It can be specified as a literal regex or as a string with the
-// following syntax. The string form allows embedding <itemSpec> in a larger DependentsGragh channel value.
+// following syntax. The string form allows embedding <itemSpec> in a larger DependentsGraph channel value.
 //      ''                         : empty string creates the regex /^/ that matches all item URI
 //      '/<expression>/[<flags>]'  : string representation of a regex is converted to its RegExp
 //      '<expression>'             : without the enclosing "/", it is converted to the regex /^<expression/ to matches URI starting
@@ -26,7 +23,7 @@ function URISpecToRegex(uriSpec) {
 
 // A PolyfillObjectMixin is a way to install dynamic patches to a JS object at runtime.  This pollyfill extends the atom.workspace
 // global object with new features.
-//   * addDep*, removeDep* family of functions are wrappers over the DependentsGragh system's global deps.add(),deps.remove() functions.
+//   * addDep*, removeDep* family of functions are wrappers over the DependentsGraph system's global deps.add(),deps.remove() functions.
 //   * itemForURI is a missing method. You can get paneForURI and then <pane>.itemForURI but this lets you do it in one step
 //   * new functions that take a URI to match use a relaxed match so that the URI must only match the start of the item's URI
 //     Also can provide RexExp
@@ -54,7 +51,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	// available as orig_<methodName>
 	// The 'this' pointer of these methods will be the target object, not the polyfill object when they are invoked.
 
-	// return the normalized DependentsGragh channel that represents the passed in values.
+	// return the normalized DependentsGraph channel that represents the passed in values.
 	// Params:
 	//    <objType>    : one of (item|textEditor|pane). The type of workspace object to be dependent on.
 	//    <actionType> : one of (<emptyString>|openned|destroyed|activated|deactivated) The action on <objType> to be dependent on
@@ -114,16 +111,16 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// DependentsGragh Integration:
+	// DependentsGraph Integration:
 	//    The following methods provide wrappers over deps.add(... ) and deps.remove(... ). This is just syntaxic sugar that makes
 	//    it more obvious to users of the atom.workspace how to make their objects dependent on atom.workspace changes and which
 	//    channels can be declared dependence on.
 	//    At the bottom of this module is the AtomWorkspaceChannelNode class which is the actual integration that ties Atom's Event
-	//    Subscription model into the DependentsGragh system.
+	//    Subscription model into the DependentsGraph system.
 	//
 	//    The significant difference in using these methods to subscribe to changes rather than the ::on<somthing> methods is that
 	//    you do not have to store disposable objects to later remove the subscription. Because the addDep... family of functions
-	//    declare a dependency between two objects, when either one is removed from the DependentsGragh system, the subscription
+	//    declare a dependency between two objects, when either one is removed from the DependentsGraph system, the subscription
 	//    will be canceled. It also means that the subscription is uniquely identified by {obj1,channel,obj2} so calling the
 	//    coresponding removeDep<...> function with the same parameters will remove just that one subscription.
 	//
@@ -239,8 +236,8 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 
 
 
-// Integration with DependentsGragh System
-// This registers a custom ChannelNode type in the DependentsGragh system so that it can manage the integration with atom.workspace
+// Integration with DependentsGraph System
+// This registers a custom ChannelNode type in the DependentsGraph system so that it can manage the integration with atom.workspace
 // Event Subscriptions. When a dependency relationship is added with atom.workspace as the source object, this specific Class of
 // ChannelNode will be created so that it can interpret the channel and create the correct atom.workspace Event Subscriptions to
 // fire the relationship when needed. When the last relationship of that channel is removed, those atom.workspace Event Subscriptions
@@ -274,8 +271,8 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 		const { channelType, channelAction, itemSpec} = AtomWorkspaceChannelNode.resolveChannel(channel);
 
 		if (!channelType) {
-			console.assert(false, 'malformed DependentsGragh channel for atom.workspace', {obj,channel});
-			throw 'malformed DependentsGragh channel for atom.workspace';
+			console.assert(false, 'malformed DependentsGraph channel for atom.workspace', {obj,channel});
+			throw 'malformed DependentsGraph channel for atom.workspace';
 		}
 
 		switch (channelType) {

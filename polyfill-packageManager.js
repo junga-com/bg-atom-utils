@@ -1,9 +1,5 @@
-import { PolyfillObjectMixin }        from './PolyfillObjectMixin'
-import { ArrangeParamsByType,
-		 FirstParamOf }               from './miscellaneous'
-import { Disposables }                from './Disposables'
-import { BGPromise }                  from './bg-promise';
-import { BGFeedbackDialog }           from './BGFeedbackDialog'
+import { PolyfillObjectMixin,ArrangeParamsByType,FirstParamOf,Disposables,ChannelNode,BGPromise}   from 'bg-dom';
+import { BGFeedbackDialog }           from './BGFeedbackDialog';
 import { exec, spawn, execSync }      from 'child_process';
 
 
@@ -11,22 +7,17 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	constructor() {
 		super(
 			atom.packages,
-			['PackageState','_normalizePkgNameSpec','_isPkgNameSpecAMatch','onDidPackageStateChange',
+			['_normalizePkgNameSpec','_isPkgNameSpecAMatch',
+			 'getChannel',
 			 'addDep','removeDep','addDep_activated','removeDep_activated','addDep_deactivated','removeDep_deactivated',
 			 'addDep_initialPackagesActivated','removeDep_initialPackagesActivated','addDep_initialPackagesLoaded','removeDep_initialPackagesLoaded',
 			 'installPackage'
 			]
 		);
-
-		this.PackageState = {
-			Activated: 'activated',
-			Deactivated: 'deactivated',
-			NotInstalled: 'notInstalled'
-		}
 	}
 
 	getTarget() {return atom.packages;}
-	doesTargetAlreadySupportFeature() {return !!this.targetonDidPackageStateChange;}
+	doesTargetAlreadySupportFeature() {return !!this.target.addDep;}
 	isTargetStillCompatibleWithThisPollyfill() {return true;}
 
 
@@ -64,9 +55,30 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	}
 
 
-	// This integrates the atom.packages object with the DependentsGragh system.
+	// return the normalized DependentsGraph channel that represents the passed in values.
+	// Params:
+	//    <objType>    : one of (item|textEditor|pane). The type of workspace object to be dependent on.
+	//    <actionType> : one of (<emptyString>|openned|destroyed|activated|deactivated) The action on <objType> to be dependent on
+	//    <pkgNameSpec>    : limit the dependency relationship to changes to <objTypes> that match pkgNameSpec.
+	//                 pkgNameSpec can be a RegExp object or the string representation of a RegExp object (like '/<exp>/[<flags>]')
+	//                 if pkgNameSpec is a string not matching the RegExp syntax, <objType> URI that start with that string will be matched.
+	getChannel(objType, actionType, pkgNameSpec) {
+		if (!objType)
+			return deps.fAll;
+		var channel = objType;
+		if (pkgNameSpec && pkgNameSpec!='/^/') {
+			channel += '('+pkgNameSpec.toString()+')'
+		}
+		if (actionType)
+			channel += '.'+actionType
+		return channel;
+	}
+
+
+
+	// This integrates the atom.packages object with the DependentsGraph system.
 	// Its a wrapper over deps.add({obj:atom.packages,channel:pkgNameSpec}, obj2, callback) that handles registering the native config
-	// watcher callaback to call deps.fire and implement a default callback that recognizes and prefers onPackageChangedState over
+	// watcher callaback to call deps.fire and implement a default callback that recognizes and prefers onPackageChanged over
 	// onDepChanged method.
 	// Params:
 	//    <pkgNameSpec> : a regex that matches package names to report changes on.
@@ -74,101 +86,50 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	//    <callback> : the optional callback to be invoked to notify <obj2>.
 	//                 callback(newState, pkgName, pkg)
 	//                 default: the first of these methods on <obj2> that exists will be invoked.
-	//                    <obj2>.onPackageChangedState(newState, pkgName, pkg)
+	//                    <obj2>.onPackageChanged(newState, pkgName, pkg)
 	//                    <obj2>.onDepChanged({obj:atom.packages,channel:<pkgNameSpec>}, newState, pkgName, pkg)
 	addDep(pkgNameSpec, obj2, callback) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec;
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPackageChangedState';
-			cnode.disposables.add(this.onDidActivatePackage((pkg)=>{
-				if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-					deps.fire({obj:this,channel}, this.PackageState.Activated, pkg.name, pkg)
-			}));
-			cnode.disposables.add(this.onDidDeactivatePackage((pkg)=>{
-				if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-					deps.fire({obj:this,channel}, this.PackageState.Deactivated, pkg.name, pkg)
-			}));
-		}
+		deps.add({obj:this,channel:this.getChannel('package', '', pkgNameSpec)}, obj2, callback);
 	}
 	// undo a call to addDep
 	removeDep(pkgNameSpec, obj2) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec;
-		deps.remove({obj:this,channel}, obj2);
+		deps.remove({obj:this,channel:this.getChannel('package', '', pkgNameSpec)}, obj2);
 	}
 
 	// callback(pkgName, pkg)
 	// <obj2>.onPackageActivated(pkgName, pkg)
 	addDep_activated(pkgNameSpec, obj2, callback) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec+".activated";
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPackageActivated';
-			cnode.disposables.add(this.onDidActivatePackage((pkg)=>{
-				if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-					deps.fire({obj:this,channel}, pkg.name, pkg)
-			}));
-		}
+		deps.add({obj:this,channel:this.getChannel('package', 'activated', pkgNameSpec)}, obj2, callback);
 	}
 	// undo a call to addDep
 	removeDep_activated(pkgNameSpec, obj2) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec+".activated";
-		deps.remove({obj:this,channel}, obj2);
+		deps.remove({obj:this,channel:this.getChannel('package', 'activated', pkgNameSpec)}, obj2);
 	}
-
 
 	// callback(pkgName, pkg)
 	// <obj2>.onPackageDeactivated(pkgName, pkg)
 	addDep_deactivated(pkgNameSpec, obj2, callback) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec+".deactivated";
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onPackageDeactivated';
-			cnode.disposables.add(this.onDidDeactivatePackage((pkg)=>{
-				if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-					deps.fire({obj:this,channel}, pkg.name, pkg)
-			}));
-		}
+		deps.add({obj:this,channel:this.getChannel('package', 'deactivated', pkgNameSpec)}, obj2, callback);
 	}
 	// undo a call to addDep
 	removeDep_deactivated(pkgNameSpec, obj2) {
 		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const channel = pkgNameSpec+".deactivated";
-		deps.remove({obj:this,channel}, obj2);
+		deps.remove({obj:this,channel:this.getChannel('package', 'deactivated', pkgNameSpec)}, obj2);
 	}
-
 
 	// callback()
 	// <obj2>.onInitialPackagesActivated()
 	addDep_initialPackagesActivated(obj2, callback) {
-		const channel = "initialPackagesActivated";
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.defaultTargetMethodName = 'onInitialPackagesActivated';
-			cnode.disposables.add(this.onDidActivateInitialPackages(()=>{deps.fire({obj:this,channel})}));
-		}
+		deps.add({obj:this,channel:this.getChannel('manager', 'initialPackagesActivated')}, obj2, callback);
 	}
 	// undo a call to addDep
 	removeDep_initialPackagesActivated(obj2) {
-		const channel = "initialPackagesActivated";
-		deps.remove({obj:this,channel}, obj2);
+		deps.remove({obj:this,channel:this.getChannel('manager', 'initialPackagesActivated')}, obj2);
 	}
 
 
@@ -176,41 +137,17 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	// callback()
 	// <obj2>.onInitialPackagesLoaded()
 	addDep_initialPackagesLoaded(obj2, callback) {
-		const channel = "initialPackagesLoaded";
-
-		const cnode = deps.add({obj:this,channel}, obj2, callback);
-
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew()) {
-			cnode.disposables.add(this.onDidLoadInitialPackages(()=>{deps.fire({obj:this,channel})}));
-			cnode.defaultTargetMethodName = 'onInitialPackagesLoaded';
-		}
+		deps.add({obj:this,channel:this.getChannel('manager', 'initialPackagesLoaded')}, obj2, callback);
 	}
 	// undo a call to addDep
 	removeDep_initialPackagesLoaded(obj2) {
-		const channel = "initialPackagesLoaded";
-		deps.remove({obj:this,channel}, obj2);
+		deps.remove({obj:this,channel:this.getChannel('manager', 'initialPackagesLoaded')}, obj2);
 	}
 
 
 
 
-	// callback(package, atom.packages.PackageState)
-	onDidPackageStateChange(pkgNameSpec, callback) {
-		pkgNameSpec=this._normalizePkgNameSpec(pkgNameSpec);
-		const disposables = new Disposables();
-		disposables.add(atom.packages.onDidActivatePackage((pkg)=>{
-			if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-				callback(this.PackageState.Activated, pkg.name, pkg);
-		}));
-		disposables.add(atom.packages.onDidDeactivatePackage((pkg)=>{
-			if (this._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
-				callback(pkg, this.PackageState.Deactivated, pkg.name, pkg);
-		}));
-		return disposables;
-	}
-
-	// Install one or more Atom pacakges so that their features are available inside Atom. It uses apmInstall to do the work.
+	// Install one or more Atom packages so that their features are available inside Atom. It uses apmInstall to do the work.
 	// Features:
 	//     * can accept a single pkgName, a comma separated list of pkgNames, or an array of pkgNames
 	//     * prompts the user for confirmation by default.
@@ -429,5 +366,100 @@ function GetApmPath() {
 
 
 
+// Integration with DependentsGraph System
+// This registers a custom ChannelNode type in the DependentsGraph system so that it can manage the integration with atom.packages
+// Event Subscriptions. When a dependency relationship is added with atom.packages as the source object, this specific Class of
+// ChannelNode will be created so that it can interpret the channel and create the correct atom.packages Event Subscriptions to
+// fire the relationship when needed. When the last relationship of that channel is removed, those atom.packages Event Subscriptions
+// will be disposed.
+class AtomPackageManagerChannelNode extends ChannelNode {
+	// in this case we made one class that works with all channel of the atom.packages object so we do not consider channel in the match
+	static matchSource(obj1,channel) {return obj1===atom.packages}
+	static resolveChannel(channel) {
+		if (channel === deps.fAll)
+			return {channelType:'all', channelAction:'', pkgNameSpec:''};
+		else {
+			const rematch = AtomPackageManagerPolyfill.channelRegex.exec((channel)?channel.toString():'');
+			if (!rematch) return {};
+			const { channelType, channelAction='' } = rematch.groups
+			const pkgNameSpec = new RegExp(
+				(rematch.groups.itemRe)
+					? rematch.groups.itemRe
+					: (rematch.groups.itemStr)
+						? '^'+rematch.groups.itemStr
+						:'^',
+				rematch.groups.itemFlags
+			);
+
+			return {channelType, channelAction, pkgNameSpec}
+		}
+	}
+
+	constructor(obj, channel) {
+		super(obj, channel);
+
+		const { channelType, channelAction, pkgNameSpec} = AtomPackageManagerChannelNode.resolveChannel(channel);
+
+		if (!channelType) {
+			console.assert(false, 'malformed DependentsGraph channel for atom.packages', {obj,channel});
+			throw 'malformed DependentsGraph channel for atom.packages';
+		}
+
+		switch (channelType) {
+			case 'package':
+				switch (channelAction) {
+					case 'activated':
+						this.defaultTargetMethodName = 'onPackageActivated';
+						this.disposables.add(obj.onDidActivatePackage((pkg)=>{
+							if (obj._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
+								deps.fire({obj,channel}, pkg.name, pkg)
+						}));
+						break;
+					case 'deactivated':
+						this.defaultTargetMethodName = 'onPackageDeactivated';
+						this.disposables.add(obj.onDidDeactivatePackage((pkg)=>{
+							if (obj._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
+								deps.fire({obj,channel}, pkg.name, pkg)
+						}));
+						break;
+					default:
+						this.defaultTargetMethodName = 'onPackageChanged';
+						this.disposables.add(obj.onDidActivatePackage((pkg)=>{
+							if (obj._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
+								deps.fire({obj,channel}, 'activated', pkg.name, pkg)
+						}));
+						this.disposables.add(obj.onDidDeactivatePackage((pkg)=>{
+							if (obj._isPkgNameSpecAMatch(pkgNameSpec, pkg.name))
+								deps.fire({obj,channel}, 'deactivated', pkg.name, pkg)
+						}));
+				}
+				break;
+			case 'manager':
+				switch (channelAction || 'all') {
+					case 'initialPackagesActivated':
+						this.defaultTargetMethodName = 'onInitialPackagesActivated';
+						this.disposables.add(obj.onDidActivateInitialPackages(()=>{deps.fire({obj,channel})}));
+						break;
+					case 'initialPackagesLoaded':
+						this.defaultTargetMethodName = 'onInitialPackagesLoaded';
+						this.disposables.add(obj.onDidLoadInitialPackages(()=>{deps.fire({obj,channel})}));
+						break;
+					case 'all':
+						this.defaultTargetMethodName = 'onPackageManagerChanged';
+						this.disposables.add(obj.onDidActivateInitialPackages(()=>{deps.fire({obj,channel},'initialPackagesActivated')}));
+						this.disposables.add(obj.onDidLoadInitialPackages(    ()=>{deps.fire({obj,channel},'onInitialPackagesLoaded' )}));
+					default:
+						console.assert(false,'unknown <channelAction> in AtomPackageManagerChannelNode', {obj,channel,chParsed:{channelType,channelAction,pkgNameSpec}})
+				}
+				break;
+			default:
+				console.assert(false,'unknown <channelType> in AtomPackageManagerChannelNode', {obj,channel,chParsed:{channelType,channelAction,pkgNameSpec}})
+				break;
+		}
+	}
+}
+const ItemSpecStr = '([/](?<itemRe>.*)[/](?<itemFlags>[gmisuy]*)|(?<itemStr>.*))'
+AtomPackageManagerPolyfill.channelRegex = new RegExp(`^(?<channelType>package|manager)(?:[(]${ItemSpecStr}[)])?(?:[.](?<channelAction>activated|deactivated|initialPackagesActivated|initialPackagesLoaded))?$`);
+deps.registerCNodeClass(AtomPackageManagerChannelNode);
 
 new AtomPackageManagerPolyfill().install();

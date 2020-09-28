@@ -1,5 +1,4 @@
-import { Disposables } from './Disposables';
-import { FirstParamOf } from './miscellaneous';
+import { FirstParamOf, Disposables } from 'bg-dom';
 
 // BGAtomPlugin makes writing Atom plugin packages easier.
 // Atom Entry Points:
@@ -14,7 +13,6 @@ import { FirstParamOf } from './miscellaneous';
 //    lastSessionsState    : contains the deserialization state passed from the atom activate call
 //    disposables          : an instance of Disposables to add things that need to be undone in destroy
 //    addCommand()         : wrapper to atom.commands.add(). associates the commands with this plugin and unregisters them in deactivate
-//    watchPackages()      : get notified when a package's activation state changes
 // Plugin Registry:
 //    window.bgPlgins['my-plugin']  : other packages and user init.js can find your package's services dynamically
 // Example:
@@ -52,7 +50,6 @@ export class BGAtomPlugin {
 
 		// When the derived class uses our methods to create resources, they are tracked in these Maps and automatically disposed.
 		this.registeredCommands = new DisposableMap();
-		this.watchedPacakges    = new DisposableMap();
 		this.watchedPreCmd      = new DisposableMap();
 		this.watchedPostCmd     = new DisposableMap();
 
@@ -66,7 +63,7 @@ export class BGAtomPlugin {
 			if (atom.packages.initialPackagesActivated) {
 				setTimeout(()=>this.lateActivate(), 0);
 			} else {
-				this.disposables.add(atom.packages.onDidActivateInitialPackages(()=>{this.lateActivate();}));
+				atom.packages.addDep_initialPackagesActivated(this,()=>{this.lateActivate();});
 			}
 		}
 	}
@@ -75,20 +72,14 @@ export class BGAtomPlugin {
 	//lateActivate(state) {}
 
 	destroy() {
-		// this.registeredCommands.forEach(v=>v.dispose()); this.registeredCommands.clear();
-		// this.watchedPacakges.forEach(v=>v.dispose());    this.watchedPacakges.clear();
+		// !!! Note: Disposables.DisposeOfMembers(this) iterates over all members to call dispose() or destroy() so we dont call
+		// this.disposables.dispose directly
+
+		// if any direct member of this plugin object has a 'dispose' or 'destroy' function, call it
+		Disposables.DisposeOfMembers(this);
 
 		// remove all relationships involving this plugin
 		deps.objectDestroyed(this);
-
-		// if any direct member of the plugin object has a 'dispose' function, call it
-		for (const name of Object.getOwnPropertyNames(this)) {
-			const prop = this[name];
-			if (prop && typeof prop == 'object' && typeof prop.dispose == 'function') {
-				//console.log(`!!!found ${name} to dispose`);
-				prop.dispose();
-			}
-		}
 
 		this.PluginClass.instance = null
 		delete BGAtomPlugin.instances.delete(this.pkgName);
@@ -97,62 +88,22 @@ export class BGAtomPlugin {
 	serialize() {}
 
 	// add to atom's command pallette
-	// call this with a null callback to remove the command
-	addCommand(name, callback) {
-		const prevValue = this.registeredCommands.get(name);
-		if (prevValue) {
-			prevValue.dispose;
-			this.registeredCommands.delete(name);
-		}
-		callback && this.registeredCommands.set(name, atom.commands.add('atom-workspace', {[name]:callback}));
-	}
+	addCommand(name, callback) {this.registeredCommands.set(name, atom.commands.add('atom-workspace', {[name]:callback}));}
+	removeCommand(name)        {this.registeredCommands.delete(name);}
 
-
-	// OBSOLETE: use atom.config.addDep(configKeySpec, obj2, callback) instead
-	watchConfig(configKey, callback) {
-		console.assert(false,"BGAtomPlugin::watchConfig is OBSOLETE: use atom.config.addDep(configKeySpec, obj2, callback) instead")
-	}
-
-	// callback gets invoked whenever a specified pkgName changes activation state. Callback is passed the name of the package and
-	// a boolean indicating the current activation state.
-	// call this with a null callback to stop watching
-	watchPackage(pkgNames, callback) {
-		typeof pkgNames == 'string' && (pkgNames = pkgNames.split(','));
-		for (const pkgName of pkgNames) {
-			const prevValue = this.watchedPacakges.get(pkgName);
-			if (prevValue) {
-				prevValue.dispose;
-				this.watchedPacakges.delete(configKey)
-			}
-			callback && this.watchedPacakges.set(pkgName, {
-				onAct: atom.packages.onDidActivatePackage(  (pkg)=>{if (pkgName==pkg.name) callback(pkg.name, true);}),
-				onDea: atom.packages.onDidDeactivatePackage((pkg)=>{if (pkgName==pkg.name) callback(pkg.name, false);}),
-				dispose: function () {this.onAct.dispose(); this.onDea.dispose()}
-			});
-		}
-	}
 
 	watchPreCommand(cmdSpec, callback) {
 		typeof cmdSpec == 'string' && (cmdSpec = new RegExp(cmdSpec));
 		const key = cmdSpec.toString();
-		const prevValue = this.watchedPreCmd.get(key);
-		if (prevValue) {
-			prevValue.dispose;
-			this.watchedPreCmd.delete(key)
-		}
-		callback && this.watchedPreCmd.delete(key, atom.commands.onWillDispatch((e)=>{if (cmdSpec.test(e.type)) callback(e.type,e);}));
+		this.watchedPreCmd.set(key, atom.commands.onWillDispatch((e)=>{if (cmdSpec.test(e.type)) callback(e.type,e);}));
 	}
 
 	watchPostCommand(cmdSpec, callback) {
 		typeof cmdSpec == 'string' && (cmdSpec = new RegExp(cmdSpec));
 		const key = cmdSpec.toString();
-		const prevValue = this.watchedPostCmd.get(key);
-		if (prevValue) {
-			prevValue.dispose;
-			this.watchedPostCmd.delete(key)
-		}
-		callback && this.watchedPostCmd.delete(key, atom.commands.onDidDispatch((e)=>{if (cmdSpec.test(e.type)) callback(e.type,e);}));
+		this.watchedPostCmd.set(key, atom.commands.onDidDispatch((e)=>{if (cmdSpec.test(e.type)) callback(e.type,e);}));
 	}
+
 
 	// Use this static method to export your MyPluginClass that extends BGAtomPlugin
 	// usage: export default BGAtomPlugin.Export(MyPluginClass)
@@ -170,8 +121,23 @@ export class BGAtomPlugin {
 // helper class to manage containers of resorces that we need to dispose of when deactivated
 class DisposableMap extends Map {
 	dispose() {
-		this.forEach(v=>v.dispose());
+		this.forEach((v)=>{
+			if (v && typeof v.dispose == 'function')
+				v.dispose;
+		});
 		this.clear();
+	}
+	set(key, value) {
+		const prevValue = this.get(key);
+		if (prevValue && typeof prevValue.dispose == 'function')
+			prevValue.dispose;
+		value && super.set(key, value);
+	}
+	delete(key) {
+		const prevValue = this.get(key);
+		if (prevValue && typeof prevValue.dispose == 'function')
+			prevValue.dispose;
+		super.delete(key);
 	}
 }
 

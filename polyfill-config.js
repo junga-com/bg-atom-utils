@@ -1,6 +1,5 @@
-import { PolyfillObjectMixin }        from './PolyfillObjectMixin'
-import { ArrangeParamsByType, FirstParamOf }        from './miscellaneous'
-import { Disposables }                from './Disposables'
+import { PolyfillObjectMixin }        from 'bg-dom'
+import { ArrangeParamsByType, FirstParamOf,Disposables,ChannelNode }  from 'bg-dom'
 
 // these local definitions were brought in from atom's config.js for the _splitKeyPath method
 const ESCAPED_DOT = /\\\./g
@@ -17,13 +16,13 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 		super(
 			atom.config,
 			['existsSchema','removeSchema','addDep','removeDep','onDidChangeAny','getConfigKeys',
-			 '_splitKeyPath','_isConfigKeyAMatch','_normalizeParams'
+			 '_splitKeyPath','_normalizeParams'
 			]
 		);
 	}
 
 	getTarget() {return atom.config;}
-	doesTargetAlreadySupportFeature() {return !!this.target.removeSchema;}
+	doesTargetAlreadySupportFeature() {return !!this.target.addDep;}
 	isTargetStillCompatibleWithThisPollyfill() {return true;}
 
 
@@ -99,38 +98,24 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 		this.resetSettingsForSchemaChange();
 	}
 
-	// This integrates the atom.config object with the DependentsGragh system.
-	// Its a wrapper over deps.add({obj:atom.config,channel:configKeySpec}, obj2, callback) that handles registering the native config
-	// watcher callaback to call deps.fire and implement a default callback that recognizes and prefers onConfigChanged over
-	// onDepChanged method.
+	// This integrates the atom.config object with the DependentsGraph system.
+	// Its a simple wrapper over deps.add({obj:atom.config,channel:configKeySpec}, obj2, callback)
 	// Params:
-	//    <configKeySpec> : the schema key string that <obj2> is dependent on. Note that <obj1> from deps.addDep is assumed to be
-	//                 atom.config b/c we are in the context of that object. <configKeySpec> is the channel of <obj1>.
-	//                 See atom.config.getConfigKeys for the supported syntax of <configKeySpec>
-	//    <obj2>     : the target object that depends on this keyPath.
-	//    <callback> : the optional callback to be invoked to notify <obj>.  If its not specifed then the first of these methods on
-	//                 <obj> that exists will be invoked.
-	//                    <obj>.onConfigChanged({key,oldValue,newValue})
-	//                    <obj>.onDepChanged(atom.config, {key,oldValue,newValue})
+	//    <configKeySpec> : identifies the schema keys that <obj2> is dependent on. The source of the deps relation is
+	//                 {obj:atom.config,channel:configKeySpec}. See atom.config.getConfigKeys for the complete syntax supported.
+	//                 This can be a RegExp, a string or an object with keys 'configContainer' and 'configKeyRegex'
+	//    <obj2>     : the target object that depends on this keyPath. If <callback> is null, <obj2>.onConfigChanged(...) will be called
+	//                 or  <obj2>.onDepChanged(...) if onConfigChanged does not exist. Even if <callback> is provided, <obj2> is
+	//                 used to identify the 'subscription'.
+	//                    <obj2>.onConfigChanged({key,oldValue,newValue})
+	//                    <obj2>.onDepChanged(atom.config, {key,oldValue,newValue})
+	//    <callback> : the optional callback to be invoked to notify <obj>.  If its not specifed then the first of
+	//                 <obj2>.onConfigChanged or <obj2>.onDepChanged that exists will be invoked.
 	// See Also:
 	//    atom.config.getConfigKeys
-	addDep(configKeySpec, obj2, callback) {
-		const cnode = deps.add({obj:this,channel:configKeySpec}, obj2, callback);
+	addDep(   configKeySpec, obj2, callback) {deps.add(    {obj:this,channel:configKeySpec}, obj2, callback);}
+	removeDep(configKeySpec, obj2)           {deps.remove( {obj:this,channel:configKeySpec}, obj2);}
 
-		// if we just created the cnode, register the callback to fire changes to this channel
-		if (cnode.isNew())
-			cnode.disposables.add(this.onDidChangeAny(configKeySpec, {}, (...p)=>{deps.fire({obj:this,channel:configKeySpec}, ...p)}));
-			cnode.defaultTargetMethodName = 'onConfigChanged';
-	}
-	// undo a call to addDep
-	removeDep(configKeySpec, obj2) {
-		deps.remove({obj:this,channel:configKeySpec}, obj2);
-	}
-
-	// internal helper function
-	_isConfigKeyAMatch(configKeySpec, configKey) {
-		const {configContainer, configKeyRegex} = this._normalizeParams(...p);
-	}
 
 	// internal helper function
 	_normalizeParams(...p) {
@@ -194,6 +179,9 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 		if (typeof cfgToSearch != 'object' && !configKeyRegex)
 			return [configContainer];
 
+		if (typeof configKeyRegex == 'string')
+			configKeyRegex = new RegExp('^'+configKeyRegex);
+
 		// recursively search the entire branch (which could be the root) for keys matching the <configKeyRegex>
 		var outKeys = [];
 		function recurseObj(obj, prefix = '', filterRegex=null) {
@@ -203,8 +191,8 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 				if ((typeof obj[curCfgItem] === 'object') && ! Array.isArray(obj[curCfgItem]))
 					outputKeys.concat(recurseObj(obj[curCfgItem], pre + curCfgItem, filterRegex));
 				else {
-	                if (!filterRegex || filterRegex.test(pre + curCfgItem))
-	    				outputKeys.push(pre + curCfgItem);
+					if (!filterRegex || filterRegex.test(pre + curCfgItem))
+						outputKeys.push(pre + curCfgItem);
 				}
 				return outputKeys;
 				}
@@ -243,7 +231,7 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 	//    form2: onDidChangeAny({configContainer:<configContainer>, configKeyRegex:<configKeyRegex>}, <callback:function>)
 	// See Also:
 	//    getConfigKeys : configContainer, configKeyRegex are processed by this method to obtain the set of keys to operate on
-	//    addDep        : alternative that uses the DependentsGragh mechaism
+	//    addDep        : alternative that uses the DependentsGraph mechaism
 	onDidChangeAny($configKeySpec, $callback) {
 		var {configContainer, configKeyRegex, callback} = this._normalizeParams(...arguments);
 		console.assert(callback && (!!configContainer || !!configKeyRegex),"atom.config.onDidChangeAny: invalid parameters passed")
@@ -260,5 +248,29 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 		return disposables;
 	}
 }
+
+
+
+
+
+// Integration with DependentsGraph System
+// This registers a custom ChannelNode type in the DependentsGraph system so that it can manage the integration with atom.config
+// Event Subscriptions. When a dependency relationship is added with atom.config as the source object, this specific Class of
+// ChannelNode will be created so that it can interpret the channel and create the correct atom.config Event Subscriptions to
+// fire the relationship when needed. When the last relationship of that channel is removed, those atom.config Event Subscriptions
+// will be disposed.
+class AtomConfigChannelNode extends ChannelNode {
+	// in this case we made one class that works with all channel of the atom.config object so we do not consider channel in the match
+	static matchSource(obj1,channel) {return obj1===atom.config}
+
+	constructor(obj, channel) {
+		super(obj, channel);
+
+		this.defaultTargetMethodName = 'onConfigChanged';
+
+		this.disposables.add(obj.onDidChangeAny(channel, {}, (...p)=>{deps.fire({obj,channel}, ...p)}));
+	}
+}
+deps.registerCNodeClass(AtomConfigChannelNode);
 
 new AtomConfigPolyfill().install();

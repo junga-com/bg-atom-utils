@@ -1,5 +1,4 @@
-import { Component } from 'bg-dom';
-import { Disposables } from './Disposables';
+import { Component, Disposables } from 'bg-dom';
 
 const defaultBGAtomViewOptions = {
 	title:           'BG View',
