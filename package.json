@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/junga-com/bg-atom-utils#readme",
   "dependencies": {
-    "bg-dom": "^2.3.6",
+    "bg-dom": "^2.3.7",
     "dedent": "^0.7.0",
     "esm": "^3.2.25"
   }
