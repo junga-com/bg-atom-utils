@@ -14,6 +14,9 @@ with different versions of this npm being used and other packages also using Pol
 
 This is an NPM Package that provides utilities to for writing Atom plugins.
 
+It extends many of the objects found at atom.* in the global namespace by providing PollyfillObjectMixin classes that are installed when the
+first atom package that depends on this package is loaded.
+
 See the atom package bg-atom-packageDev (WIP) which (will) demonstrate how to use this package and provide some tools for development.
 
 ### Classes

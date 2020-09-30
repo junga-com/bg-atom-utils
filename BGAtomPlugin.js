@@ -1,4 +1,4 @@
-import { FirstParamOf, Disposables } from 'bg-dom';
+import { FirstParamOf, Disposables, RegisterGlobalService, RegisterPackage } from 'bg-dom'
 
 // BGAtomPlugin makes writing Atom plugin packages easier.
 // Atom Entry Points:
@@ -17,8 +17,8 @@ import { FirstParamOf, Disposables } from 'bg-dom';
 //    window.bgPlgins['my-plugin']  : other packages and user init.js can find your package's services dynamically
 // Example:
 //     class MyPlugin extends BGAtomPlugin {
-//       constructor('my-plugin', ...p) {
-//         super(...p);
+//       constructor(state) {
+//         super(my-plugin, state, __filename);
 //         // constructor is called when Atom activates your package
 //         // this.lastSessionsState contains the deserialization state
 //         this.addCommand('my-plugin:doIt', ()=>alert('doing it!'))
@@ -39,10 +39,13 @@ export class BGAtomPlugin {
 	}
 
 	// usage: pkgName, lastSessionsState
-	constructor(...p) {
-		this.pkgName = FirstParamOf('string', ...p);
-		this.lastSessionsState = FirstParamOf('object', ...p) || {};
+	constructor(pkgName, lastSessionsState, moduleFilename) {
+		this.pkgName = pkgName;
+		this.lastSessionsState = lastSessionsState || {};
+		this.moduleFilename = moduleFilename;
 		this.PluginClass = new.target;
+
+		RegisterPackage(this.moduleFilename);
 
 		// subscriptions is a place to put things that need to be cleaned up on deativation
 		this.disposables = new Disposables();
@@ -55,7 +58,7 @@ export class BGAtomPlugin {
 
 		console.assert(!this.PluginClass.instance, 'Package plugin being constructed twice. Should be a singleton. pacakgeName='+this.pkgName);
 		this.PluginClass.instance = this;
-		BGAtomPlugin.instances.set(this.pkgName, this);
+		bg.BGAtomPlugin.instances.set(this.pkgName, this);
 
 		// if the derived class declares a lateActivate method, invoke it from the onDidActivateInitialPackages event
 
@@ -82,7 +85,7 @@ export class BGAtomPlugin {
 		deps.objectDestroyed(this);
 
 		this.PluginClass.instance = null
-		delete BGAtomPlugin.instances.delete(this.pkgName);
+		delete bg.BGAtomPlugin.instances.delete(this.pkgName);
 	}
 
 	serialize() {}
@@ -141,6 +144,9 @@ class DisposableMap extends Map {
 	}
 }
 
-if (typeof global.bg == 'undefined') global.bg = Object.create(null)
-BGAtomPlugin.instances = new Map();
-global.bg.BGAtomPlugin = BGAtomPlugin;
+
+// create a global API for BGPlugins. This is particularly useful in the dev console and init.js file
+RegisterGlobalService('1.0.0', null,            'bg',           ()=>{return Object.create(null)});
+RegisterGlobalService('1.0.0', global.bg,       'BGAtomPlugin', ()=>{return BGAtomPlugin});
+RegisterGlobalService('1.0.0', bg.BGAtomPlugin, 'instances',    ()=>{return new Map()});
+BGAtomPlugin.instances = bg.BGAtomPlugin.instances;
