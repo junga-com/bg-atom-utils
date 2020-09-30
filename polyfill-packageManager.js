@@ -178,7 +178,7 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	//    <extraButtons>:object : extra buttons to display in the confirmation prompt. These can offer alternatives to installing the packages
 	//             such as configuring the system so that the packages are not needed.
 	//             See https://flight-manual.atom.io/api/v1.45.0/NotificationManager/#instance-addInfo
-	installPackage(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[], ...p}) {
+	installPackage(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt=true, extraButtons=[], ...p}={}) {
 		var pkgInstaller = new PkgInstaller(packageNames, {onAllFinishedCB, onPkgFinishedCB, confirmPromt, extraButtons, ...p})
 		return pkgInstaller.prom
 	}
@@ -197,7 +197,20 @@ class PkgInstaller {
 		this.onPkgFinishedCB = onPkgFinishedCB;
 		this.extraButtons    = extraButtons;
 
-		if (confirmPromt)
+		// remove any pkg that are already active. Save the complete list for reporting
+		this.packageNamesRequested = this.packageNames;
+		this.packageNames = this.packageNames.filter((pkgName)=>{return !atom.packages.isPackageActive(pkgName)})
+
+		if (this.packageNames.length==0)
+			(confirmPromt) && atom.notifications.addSuccess(
+				`These packages, required by a feature you are accessing, are already installed.`,
+				{	dismissable: false,
+					icon: 'cloud-download',
+					detail: this.packageNamesRequested.join(', ')
+				}
+			)
+
+		else if (confirmPromt)
 			this.confirmInstallation()
 		else
 			this.installPkgs()
@@ -211,6 +224,7 @@ class PkgInstaller {
 			let upstreamCB = button.onDidClick;
 			button.onDidClick = (...p)=>{upstreamCB(...p); this.endWithoutInstalling()}
 		}
+
 		this.confirmDlg = atom.notifications.addWarning(
 			`The feature you are accessing requires that the the following package(s) be installed.`,
 			{	dismissable: true,
