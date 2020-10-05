@@ -1,7 +1,7 @@
 import { PolyfillObjectMixin }        from 'bg-dom';
 import { ChannelNode, iniParamGetAll }from 'bg-dom';
 import * as fs                        from 'fs';
-
+import * as path                      from 'path';
 
 
 export class AtomProjectPolyfill extends PolyfillObjectMixin {
@@ -16,6 +16,26 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 	doesTargetAlreadySupportFeature() {return false;}
 	isTargetStillCompatibleWithThisPollyfill() {return true;}
 
+	install(...p) {
+		super.install(...p);
+		this.bgSandboxDirProvider = new SandboxDirectoryProvider();
+		this.target.directoryProviders.unshift(this.bgSandboxDirProvider);
+
+		this.bgSandboxRepoProvider = new SandboxRepositoryProvider();
+		this.target.repositoryProviders.unshift(this.bgSandboxRepoProvider);
+
+		this.target.setPaths(this.target.getPaths());
+	}
+
+	uninstall(...p) {
+		this.target.directoryProviders.splice(this.directoryProviders.indexOf(this.bgSandboxDirProvider),1);
+		this.bgSandboxDirProvider = null;
+
+		this.target.repositoryProviders.splice(this.repositoryProviders.indexOf(this.bgSandboxRepoProvider),1);
+		this.bgSandboxRepoProvider = null;
+
+		super.uninstall(...p);
+	}
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Polyfill Methods...
@@ -35,18 +55,17 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 	// paths and that set of paths, not the sandbox folder is what gets serialized/deserialized.
 	addPath(...p) {
 		const [newPath] = p;
-		const pwd = process.cwd()
-		if (fs.existsSync(pwd+'/.bg-sp/config')) {
-			const projectData = iniParamGetAll(pwd+'/.bg-sp/config')
-			if (projectData && projectData.projectType == 'sandbox' && pwd==newPath) {
-				const subs = [];
-				for (const entry of fs.readdirSync(newPath))
-					if (fs.existsSync(newPath+'/'+entry+'/.bg-sp/config'))
-						subs.push(newPath+'/'+entry);
-				if (subs.length>0) {
-					this.setPaths(subs);
-					return;
-				}
+		if (SB_isASandboxFolder(newPath) && process.cwd()==newPath) {
+			const subs = [];
+			for (const entry of fs.readdirSync(newPath)) {
+				const subPath = path.join(newPath, entry);
+				if (SB_isABGProjectFolder(subPath))
+					subs.push(subPath);
+			}
+			if (subs.length>0) {
+				this.setPaths(subs);
+				this.orig_addPath(...p);
+				return;
 			}
 		}
 
@@ -54,7 +73,131 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 	}
 }
 
+function SB_isASandboxFolder(folder) {
+	if (!folder) return false;
+	const bgSPConfigFile = path.join(folder,'.bg-sp','config');
+	const projectData = iniParamGetAll(bgSPConfigFile);
+	return (projectData && projectData.projectType == 'sandbox');
+}
 
+function SB_isABGProjectFolder(folder) {
+	if (!folder) return false;
+	const bgSPConfigFile = path.join(folder,'.bg-sp','config');
+	const projectData = iniParamGetAll(bgSPConfigFile);
+	return (projectData && typeof projectData.projectType != 'undefined');
+}
+
+class SandboxDirectoryProvider {
+	directoryForURI(projectPath) {return Promise((resolveFn)=>{resolveFn(this.directoryForURISync(projectPath))})}
+	directoryForURISync(projectPath) {
+		if (SB_isASandboxFolder(projectPath)) {
+			const defaultDir= atom.project.defaultDirectoryProvider.directoryForURISync(projectPath);
+			return new SandboxDirectory(defaultDir);
+		}
+	}
+}
+
+class SandboxDirectory {
+	// this implements a runtime inheritance pattern. <dir> is the existing atom Directory class instance that repreents the folder
+	// and this class extends that **object** as opposed to extending a class.
+	constructor(dir) {
+		Reflect.setPrototypeOf(this.__proto__, dir);
+	}
+
+	getEntriesSync() {
+		var entries = super.getEntriesSync();
+		if (entries)
+			entries = entries.filter((entry)=>!entry.isDirectory() || !SB_isABGProjectFolder(entry.getPath()))
+		return entries;
+	}
+
+	getEntries(callback) {
+		super.getEntries((error,entries)=>{
+			if (entries)
+				entries = entries.filter((entry)=>!entry.isDirectory() || !SB_isABGProjectFolder(entry.getPath()))
+			callback(error,entries);
+		})
+	}
+}
+
+class SandboxRepositoryProvider {
+	repositoryForDirectory(directory) {return Promise((resolveFn)=>{resolveFn(this.repositoryForDirectorySync(directory))})}
+	repositoryForDirectorySync(directory) {
+		if (SB_isASandboxFolder(directory.getPath())) {
+			const defaultRepo= this.getRepoFromOtherProviders(directory);
+			if (defaultRepo)
+				return new SandboxRepositoryMixin(defaultRepo);
+			else
+				return new SandboxRepository(directory.getPath());
+		}
+	}
+	getRepoFromOtherProviders(directory) {
+		for (let provider of atom.project.repositoryProviders) {
+			if (provider!==this && provider.repositoryForDirectorySync) {
+				var repo = provider.repositoryForDirectorySync(directory);
+			}
+			if (repo) {
+				return repo;
+			}
+		}
+	}
+}
+
+class SandboxRepositoryMixin {
+	// this implements a runtime inheritance pattern. <repo> is the existing atom GitRepository class instance that repreents the folder
+	// and this class extends that **object** as opposed to extending a class.
+	constructor(repo) {
+		Reflect.setPrototypeOf(this.__proto__, repo);
+	}
+
+	isPathIgnored(path) {
+		if (SB_isABGProjectFolder(path))
+			return true;
+		return super.isPathIgnored(path)
+	}
+}
+
+class SandboxRepository {
+	constructor(path) {
+		this.path = path;
+	}
+
+	destroy() {}
+	isDestroyed() {return false;}
+	onDidDestroy(callback) {return {dispose:()=>{}}}
+	onDidChangeStatus(callback) {return {dispose:()=>{}}}
+	onDidChangeStatuses(callback) {return {dispose:()=>{}}}
+	getType() {return 'bgsandbox'}
+	getPath() {return this.path}
+	getWorkingDirectory() {return this.path}
+	isProjectAtRoot() {return true}
+	relativize(path) {return path.relative(this.path, path)}
+	hasBranch(branch) {return false}
+	getShortHead(path) {return path}
+	isSubmodule(filePath) {return false}
+	getAheadBehindCount(reference, path) {return 0}
+	getCachedUpstreamAheadBehindCount(path) {return 0}
+	getConfigValue(key, path) {return undefined}
+	getOriginURL(path) {return path}
+	getUpstreamBranch(path) {return ""}
+	getReferences(path) {return {}}
+	getReferenceTarget(reference, path) {return undefined}
+	isPathModified(path) {return false}
+	isPathNew(path) {return false}
+	isPathIgnored(path) {
+		if (SB_isABGProjectFolder(path))
+			return true;
+	}
+	getDirectoryStatus(directoryPath) {return 0}
+	getPathStatus(path) {return 0}
+	getCachedPathStatus(path) {return 0}
+	isStatusModified(status) {return false}
+	isStatusNew(status) {return false}
+	getDiffStats(path) {return {}}
+	getLineDiffs(path, text) {return []}
+	checkoutHead(path) {return true}
+	checkoutReference(reference, create) {return true}
+}
 
 
 

@@ -120,7 +120,7 @@ export class AtomConfigPolyfill extends PolyfillObjectMixin {
 	// internal helper function
 	_normalizeParams(...p) {
 		var configContainer, configKeyRegex, callback;
-		if (typeof p[0] == 'object' && p[0].configContainer || p[0].configKeyRegex) {
+		if (typeof p[0] == 'object' && (p[0].configContainer || p[0].configKeyRegex)) {
 			configContainer = p[0].configContainer;
 			configKeyRegex = p[0].configKeyRegex;
 			callback = FirstParamOf('function', ...p);
