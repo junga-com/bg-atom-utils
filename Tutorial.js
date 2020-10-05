@@ -31,7 +31,7 @@ export class Tutorial {
 
 			data = data.split(' ');
 			if (typeof this[data[1]] == 'function') {
-				// invoke with a delay so that the rest of packages can initialize. W/o this openning the config setting package
+				// invoke with a delay so that the rest of packages can initialize. W/o this opening the config setting package
 				// page in the step being re-invoked opened a empty text editor instead of the config settings window.
 				// TODO: there should be an obvious API to defer -- related to lateConstruction in AtomPlugin class
 				setTimeout(()=>{this[data[1]]()},200);

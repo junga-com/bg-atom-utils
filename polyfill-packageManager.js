@@ -58,7 +58,7 @@ export class AtomPackageManagerPolyfill extends PolyfillObjectMixin {
 	// return the normalized DependentsGraph channel that represents the passed in values.
 	// Params:
 	//    <objType>    : one of (item|textEditor|pane). The type of workspace object to be dependent on.
-	//    <actionType> : one of (<emptyString>|openned|destroyed|activated|deactivated) The action on <objType> to be dependent on
+	//    <actionType> : one of (<emptyString>|opened|destroyed|activated|deactivated) The action on <objType> to be dependent on
 	//    <pkgNameSpec>    : limit the dependency relationship to changes to <objTypes> that match pkgNameSpec.
 	//                 pkgNameSpec can be a RegExp object or the string representation of a RegExp object (like '/<exp>/[<flags>]')
 	//                 if pkgNameSpec is a string not matching the RegExp syntax, <objType> URI that start with that string will be matched.

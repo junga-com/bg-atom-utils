@@ -33,9 +33,10 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 			atom.workspace,
 			['itemForURI','getItemByURI','getItemsByURI','hide',
 			 'getChannel','addDep','removeDep',
-			 'addDep_item',      'removeDep_item',      'addDep_itemOpenned',      'removeDep_itemOpenned',      'addDep_itemDestroyed','removeDep_itemDestroyed', 'addDep_itemActivated',      'removeDep_itemActivated',       ,'addDep_itemDeactivated',      'removeDep_itemDeactivated',
-			 'addDep_textEditor','removeDep_textEditor','addDep_textEditorOpenned','removeDep_textEditorOpenned',                                                  'addDep_textEditorActivated','removeDep_textEditorActivated', ,'addDep_textEditorDeactivated','removeDep_textEditorDeactivated',
-			 'addDep_pane',      'removeDep_pane',      'addDep_paneOpenned',      'removeDep_paneOpenned',      'addDep_paneDestroyed','removeDep_paneDestroyed', 'addDep_paneActivated',      'removeDep_paneActivated',       ,'addDep_paneDeactivated',      'removeDep_paneDeactivated'
+			 'addDep_uriOpenning',
+			 'addDep_item',      'removeDep_item',      'addDep_itemOpened',      'removeDep_itemOpened',      'addDep_itemDestroyed','removeDep_itemDestroyed', 'addDep_itemActivated',      'removeDep_itemActivated',       ,'addDep_itemDeactivated',      'removeDep_itemDeactivated',
+			 'addDep_textEditor','removeDep_textEditor','addDep_textEditorOpened','removeDep_textEditorOpened',                                                  'addDep_textEditorActivated','removeDep_textEditorActivated', ,'addDep_textEditorDeactivated','removeDep_textEditorDeactivated',
+			 'addDep_pane',      'removeDep_pane',      'addDep_paneOpened',      'removeDep_paneOpened',      'addDep_paneDestroyed','removeDep_paneDestroyed', 'addDep_paneActivated',      'removeDep_paneActivated',       ,'addDep_paneDeactivated',      'removeDep_paneDeactivated'
 			]
 		);
 	}
@@ -125,7 +126,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//    coresponding removeDep<...> function with the same parameters will remove just that one subscription.
 	//
 	//    These wrapper are more terse than calling the deps system directly....
-	// 	     atom.workspace.addDep_itemOpenned(uriSpec, obj2, callback);
+	// 	     atom.workspace.addDep_itemOpened(uriSpec, obj2, callback);
 	//           ... is the same as ...
 	//       deps.add({obj:atom.workspace,channel:atom.workspace.getChannel('item', 'openned', uriSpec)  }, obj2, callback);
 
@@ -146,6 +147,11 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	addDep(   obj2, callback) {deps.add(   this, obj2, callback);}
 	removeDep(obj2)           {deps.remove(this, obj2);}
 
+	// <obj2>.onURIOpenning(uri)
+	// Return Value:
+	//   <
+	addDep_uriOpening(uriSpec, obj2, callback) {deps.add({obj:this,  channel:this.getChannel('uri', 'opening', uriSpec)},obj2,callback)}
+
 
 	// <obj2>.onWorkspaceItemChanged(<actionType>, <item>, ...)
 	// callback('openned',     <item>, <pane>, <index>)
@@ -159,10 +165,10 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	addDep_item(   uriSpec, obj2, callback)            {deps.add(   {obj:this,  channel:this.getChannel('item', '', uriSpec)  }, obj2, callback);}
 	removeDep_item(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('item', '', uriSpec)  }, obj2);}
 
-	// <obj2>.onWorkspaceItemOpenned(<item>, <pane>, <index>)
+	// <obj2>.onWorkspaceItemOpened(<item>, <pane>, <index>)
 	// callback(<opennedItem>, <pane>, <index>)
-	addDep_itemOpenned(   uriSpec, obj2, callback)     {deps.add(   {obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2, callback);}
-	removeDep_itemOpenned(uriSpec, obj2)               {deps.remove({obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2);}
+	addDep_itemOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2, callback);}
+	removeDep_itemOpened(uriSpec, obj2)               {deps.remove({obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceItemDestroyed(<item>, <pane>, <index>)
 	// callback(<destroyedItem>, <pane>, <index>)
@@ -179,7 +185,6 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	addDep_itemDeactivated(   uriSpec, obj2, callback) {deps.add(   {obj:this,  channel:this.getChannel('item', 'deactivated', uriSpec)  }, obj2, callback);}
 	removeDep_itemDeactivated(uriSpec, obj2)           {deps.remove({obj:this,  channel:this.getChannel('item', 'deactivated', uriSpec)  }, obj2);}
 
-
 	// <obj2>.onWorkspaceTextEditorChanged(<actionType>, <editor>, ...)
 	// callback('openned',     <editor>, <pane>, <index>)
 	// callback('activated',   <editor>, <previousActiveEditor>)
@@ -187,10 +192,10 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	addDep_textEditor(   uriSpec, obj2, callback)            {deps.add(   {obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2, callback);}
 	removeDep_textEditor(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2);}
 
-	// <obj2>.onWorkspaceTextEditorOpenned(<editor>, <pane>, <index>)
+	// <obj2>.onWorkspaceTextEditorOpened(<editor>, <pane>, <index>)
 	// callback(<opennedEditor>, <pane>, <index>)
-	addDep_textEditorOpenned(   uriSpec, obj2, callback)     {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2, callback);}
-	removeDep_textEditorOpenned(uriSpec, obj2)               {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2);}
+	addDep_textEditorOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2, callback);}
+	removeDep_textEditorOpened(uriSpec, obj2)               {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceTextEditorActivated(<editor>, <previousActiveEditor>)
 	// callback(<activatedEditor>, <previousActiveEditor>)
@@ -211,10 +216,10 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	addDep_pane(   obj2, callback)            {deps.add(   {obj:this,  channel:'panes'  }, obj2, callback);}
 	removeDep_pane(obj2)                      {deps.remove({obj:this,  channel:'panes'  }, obj2);}
 
-	// <obj2>.onWorkspaceTextPaneOpenned(<pane>)
+	// <obj2>.onWorkspaceTextPaneOpened(<pane>)
 	// callback(<opennedPane>)
-	addDep_paneOpenned(   obj2, callback)     {deps.add({obj:this,     channel:'panes.openned'  }, obj2, callback);}
-	removeDep_paneOpenned(obj2)               {deps.remove({obj:this,  channel:'panes.openned'  }, obj2);}
+	addDep_paneOpened(   obj2, callback)     {deps.add({obj:this,     channel:'panes.openned'  }, obj2, callback);}
+	removeDep_paneOpened(obj2)               {deps.remove({obj:this,  channel:'panes.openned'  }, obj2);}
 
 	// <obj2>.onWorkspaceTextPaneDestroyed(<pane>)
 	// callback(<destroyedPane>)
@@ -280,7 +285,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 				this.lastActiveItem = obj.activePaneContainer.getActivePaneItem();
 				switch (channelAction) {
 					case 'openned':
-						this.defaultTargetMethodName = 'onWorkspaceItemOpenned';
+						this.defaultTargetMethodName = 'onWorkspaceItemOpened';
 						this.disposables.add(obj.onDidOpen((event)=>{
 							if (itemSpec.test(event.uri))
 								deps.fire({obj,channel}, event.item, event.pane, event.index)
@@ -333,7 +338,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 				this.lastActiveEditor = obj.getActiveTextEditor();
 				switch (channelAction) {
 					case 'openned':
-						this.defaultTargetMethodName = 'onTextEditorOpenned';
+						this.defaultTargetMethodName = 'onTextEditorOpened';
 						this.disposables.add(obj.onDidAddTextEditor((event)=>{
 							if (itemSpec.test(event.textEditor.getURI()))
 								deps.fire({obj,channel}, event.textEditor, event.pane, event.index)
@@ -374,7 +379,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 				this.lastActivePane = obj.activePaneContainer.getActivePane();
 				switch (channelAction) {
 					case 'openned':
-						this.defaultTargetMethodName = 'onPaneOpenned';
+						this.defaultTargetMethodName = 'onPaneOpened';
 						this.disposables.add(obj.onDidAddPane((event)=>{
 							deps.fire({obj,channel}, event.pane)
 						}))
