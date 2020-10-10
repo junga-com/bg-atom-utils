@@ -55,7 +55,7 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 	// paths and that set of paths, not the sandbox folder is what gets serialized/deserialized.
 	addPath(...p) {
 		const [newPath] = p;
-		if (SB_isASandboxFolder(newPath) && process.cwd()==newPath) {
+		if (SB_isASandboxFolder(newPath)) {
 			const subs = [];
 			for (const entry of fs.readdirSync(newPath)) {
 				const subPath = path.join(newPath, entry);
@@ -63,6 +63,7 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 					subs.push(subPath);
 			}
 			if (subs.length>0) {
+				process.chdir(newPath);
 				this.setPaths(subs);
 				this.orig_addPath(...p);
 				return;
@@ -73,14 +74,14 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 	}
 }
 
-function SB_isASandboxFolder(folder) {
+export function SB_isASandboxFolder(folder) {
 	if (!folder) return false;
 	const bgSPConfigFile = path.join(folder,'.bg-sp','config');
 	const projectData = iniParamGetAll(bgSPConfigFile);
 	return (projectData && projectData.projectType == 'sandbox');
 }
 
-function SB_isABGProjectFolder(folder) {
+export function SB_isABGProjectFolder(folder) {
 	if (!folder) return false;
 	const bgSPConfigFile = path.join(folder,'.bg-sp','config');
 	const projectData = iniParamGetAll(bgSPConfigFile);

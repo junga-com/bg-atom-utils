@@ -1,4 +1,5 @@
-import { PolyfillObjectMixin,ArrangeParamsByType,Disposables,ChannelNode} from 'bg-dom'
+import { PolyfillObjectMixin,ArrangeParamsByType,Disposables,ChannelNode} from 'bg-dom';
+import fs from 'fs';
 
 // <itemSpec> is a syntax to specify one or more matching item URI. It can be specified as a literal regex or as a string with the
 // following syntax. The string form allows embedding <itemSpec> in a larger DependentsGraph channel value.
@@ -31,9 +32,9 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	constructor() {
 		super(
 			atom.workspace,
-			['itemForURI','getItemByURI','getItemsByURI','hide',
+			['itemForURI','getItemByURI','getItemsByURI','hide','openTextFile',
 			 'getChannel','addDep','removeDep',
-			 'addDep_uriOpenning',
+			 'addDep_uriOpening',
 			 'addDep_item',      'removeDep_item',      'addDep_itemOpened',      'removeDep_itemOpened',      'addDep_itemDestroyed','removeDep_itemDestroyed', 'addDep_itemActivated',      'removeDep_itemActivated',       ,'addDep_itemDeactivated',      'removeDep_itemDeactivated',
 			 'addDep_textEditor','removeDep_textEditor','addDep_textEditorOpened','removeDep_textEditorOpened',                                                  'addDep_textEditorActivated','removeDep_textEditorActivated', ,'addDep_textEditorDeactivated','removeDep_textEditorDeactivated',
 			 'addDep_pane',      'removeDep_pane',      'addDep_paneOpened',      'removeDep_paneOpened',      'addDep_paneDestroyed','removeDep_paneDestroyed', 'addDep_paneActivated',      'removeDep_paneActivated',       ,'addDep_paneDeactivated',      'removeDep_paneDeactivated'
@@ -52,10 +53,23 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	// available as orig_<methodName>
 	// The 'this' pointer of these methods will be the target object, not the polyfill object when they are invoked.
 
+	// extend openTextFile to support a convention to use the querystring to specify which type of editor to open the file in.
+	// I wanted the default behavior for .bgdeps files to open in the cyto graphical view but I also wanted to support a button
+	// in that view to open the file in a text editor. I had some success with calling the undocumented atom.workspace.openTextFile
+	// from my plugin's oppener function when I detected the querystring but because that method is async and the openers are invoked
+	// synchronously, I could not make it work reliably. An alternate patch would be to fix open to resolve promises if the opener
+	// callback returns one but that would be harder since its in the middle of a method.
+	async openTextFile(uri, options) {
+		const uriNew = uri.replace(/[?]editor=text\s*$/,"");
+		if (uriNew!=uri && !fs.existsSync(uri) && fs.existsSync(uriNew))
+			uri = uriNew;
+		return this.orig_openTextFile(uri,options)
+	}
+
 	// return the normalized DependentsGraph channel that represents the passed in values.
 	// Params:
 	//    <objType>    : one of (item|textEditor|pane). The type of workspace object to be dependent on.
-	//    <actionType> : one of (<emptyString>|openned|destroyed|activated|deactivated) The action on <objType> to be dependent on
+	//    <actionType> : one of (<emptyString>|opened|destroyed|activated|deactivated) The action on <objType> to be dependent on
 	//    <uriSpec>    : limit the dependency relationship to changes to <objTypes> that match uriSpec.
 	//                 uriSpec can be a RegExp object or the string representation of a RegExp object (like '/<exp>/[<flags>]')
 	//                 if uriSpec is a string not matching the RegExp syntax, <objType> URI that start with that string will be matched.
@@ -107,8 +121,9 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//    <uri> : a string or RegExp that will match the uri of the items to hide. A string will be interpretted as the leteral
 	//            prefix to match. e.g. 'atom://config' will match 'atom://config/bg-tree-view-toolbar'
 	hide(uriSpec) {
-		for (const item in this.getItemsByURI(uriSpec))
+		for (const item of this.getItemsByURI(uriSpec)) {
 			this.orig_hide(item.getURI());
+		}
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -128,33 +143,37 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//    These wrapper are more terse than calling the deps system directly....
 	// 	     atom.workspace.addDep_itemOpened(uriSpec, obj2, callback);
 	//           ... is the same as ...
-	//       deps.add({obj:atom.workspace,channel:atom.workspace.getChannel('item', 'openned', uriSpec)  }, obj2, callback);
+	//       deps.add({obj:atom.workspace,channel:atom.workspace.getChannel('item', 'opened', uriSpec)  }, obj2, callback);
 
 
 	// <obj2>.onWorkspaceChanged(<objType>, <actionType>, <obj>, ...)
 	// callback(<objType>, <actionType>, <obj>, ...)
-	// callback('item',       'openned',     <item>,   <pane>, <index>)
+	// callback('item',       'opened',      <item>,   <pane>, <index>)
 	// callback('item',       'destroyed',   <item>,   <pane>, <index>)
 	// callback('item',       'activated',   <item>,   <previousActiveItem>)
 	// callback('item',       'deactivated', <item>,   <newActiveItem>)
-	// callback('textEditor', 'openned',     <editor>, <pane>, <index>)
+	// callback('textEditor', 'opened',      <editor>, <pane>, <index>)
 	// callback('textEditor', 'activated',   <editor>, <previousActiveEditor>)
 	// callback('textEditor', 'deactivated', <editor>, <newActiveEditor>)
-	// callback('pane',       'openned'      <pane>)
+	// callback('pane',       'opened'       <pane>)
 	// callback('pane',       'destroyed'    <pane>)
 	// callback('pane',       'activated'    <pane>,   <previousActivePane>)
 	// callback('pane',       'deactivated'  <pane>,   <newActivePane>)
 	addDep(   obj2, callback) {deps.add(   this, obj2, callback);}
 	removeDep(obj2)           {deps.remove(this, obj2);}
 
-	// <obj2>.onURIOpenning(uri)
+
+	// <obj2>.onURIOpening(uri)
+	// Note: not sure if this should follow the DependentsGraph pattern yet. This is a plugin pattern where the callback implements
+	// polymorphism. Maybe that is should be a different pattern. The key difference between this and other addDep* relations is that
+	// the callback can return a value which changes the bevior of the source side of the relationship.
 	// Return Value:
-	//   <
+	//   <viewOrItem> : Can be an object inherited from HTMLElement or an item that as a registered view
 	addDep_uriOpening(uriSpec, obj2, callback) {deps.add({obj:this,  channel:this.getChannel('uri', 'opening', uriSpec)},obj2,callback)}
 
 
 	// <obj2>.onWorkspaceItemChanged(<actionType>, <item>, ...)
-	// callback('openned',     <item>, <pane>, <index>)
+	// callback('opened',      <item>, <pane>, <index>)
 	// callback('destroyed',   <item>, <pane>, <index>)
 	// callback('activated',   <item>, <previousActiveItem>)
 	// callback('deactivated', <item>, <newActiveItem>)
@@ -166,9 +185,9 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	removeDep_item(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('item', '', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceItemOpened(<item>, <pane>, <index>)
-	// callback(<opennedItem>, <pane>, <index>)
-	addDep_itemOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2, callback);}
-	removeDep_itemOpened(uriSpec, obj2)               {deps.remove({obj:this, channel:this.getChannel('item', 'openned', uriSpec)  }, obj2);}
+	// callback(<openedItem>, <pane>, <index>)
+	addDep_itemOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this, channel:this.getChannel('item', 'opened', uriSpec)  }, obj2, callback);}
+	removeDep_itemOpened(uriSpec, obj2)               {deps.remove({obj:this, channel:this.getChannel('item', 'opened', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceItemDestroyed(<item>, <pane>, <index>)
 	// callback(<destroyedItem>, <pane>, <index>)
@@ -186,16 +205,16 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	removeDep_itemDeactivated(uriSpec, obj2)           {deps.remove({obj:this,  channel:this.getChannel('item', 'deactivated', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceTextEditorChanged(<actionType>, <editor>, ...)
-	// callback('openned',     <editor>, <pane>, <index>)
+	// callback('opened',      <editor>, <pane>, <index>)
 	// callback('activated',   <editor>, <previousActiveEditor>)
 	// callback('deactivated', <editor>, <newActiveEditor>)
 	addDep_textEditor(   uriSpec, obj2, callback)            {deps.add(   {obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2, callback);}
 	removeDep_textEditor(uriSpec, obj2)                      {deps.remove({obj:this,  channel:this.getChannel('textEditor', '', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceTextEditorOpened(<editor>, <pane>, <index>)
-	// callback(<opennedEditor>, <pane>, <index>)
-	addDep_textEditorOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2, callback);}
-	removeDep_textEditorOpened(uriSpec, obj2)               {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'openned', uriSpec)  }, obj2);}
+	// callback(<openedEditor>, <pane>, <index>)
+	addDep_textEditorOpened(   uriSpec, obj2, callback)     {deps.add(   {obj:this,  channel:this.getChannel('textEditor', 'opened', uriSpec)  }, obj2, callback);}
+	removeDep_textEditorOpened(uriSpec, obj2)               {deps.remove({obj:this,  channel:this.getChannel('textEditor', 'opened', uriSpec)  }, obj2);}
 
 	// <obj2>.onWorkspaceTextEditorActivated(<editor>, <previousActiveEditor>)
 	// callback(<activatedEditor>, <previousActiveEditor>)
@@ -209,7 +228,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 
 
 	// <obj2>.onWorkspaceTextPaneChanged(<actionType>, <pane>, ...)
-	// callback('openned'    <pane>)
+	// callback('opened'     <pane>)
 	// callback('destroyed'  <pane>)
 	// callback('activated'  <pane>, <previousActivePane>)
 	// callback('deactivated' <pane>, <newActivePane>)
@@ -217,9 +236,9 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	removeDep_pane(obj2)                      {deps.remove({obj:this,  channel:'panes'  }, obj2);}
 
 	// <obj2>.onWorkspaceTextPaneOpened(<pane>)
-	// callback(<opennedPane>)
-	addDep_paneOpened(   obj2, callback)     {deps.add({obj:this,     channel:'panes.openned'  }, obj2, callback);}
-	removeDep_paneOpened(obj2)               {deps.remove({obj:this,  channel:'panes.openned'  }, obj2);}
+	// callback(<openedPane>)
+	addDep_paneOpened(   obj2, callback)     {deps.add({obj:this,     channel:'panes.opened'  }, obj2, callback);}
+	removeDep_paneOpened(obj2)               {deps.remove({obj:this,  channel:'panes.opened'  }, obj2);}
 
 	// <obj2>.onWorkspaceTextPaneDestroyed(<pane>)
 	// callback(<destroyedPane>)
@@ -281,10 +300,23 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 		}
 
 		switch (channelType) {
+			case 'uri':
+				switch (channelAction) {
+					case 'opening':
+						this.defaultTargetMethodName = 'onURIOpening';
+						this.disposables.add(obj.addOpener((uri)=>{
+							if (itemSpec.test(uri)) {
+								const results = deps.fire({obj,channel}, uri);
+								return results;
+							}
+						}))
+						break;
+				}
+				break;
 			case 'item':
 				this.lastActiveItem = obj.activePaneContainer.getActivePaneItem();
 				switch (channelAction) {
-					case 'openned':
+					case 'opened':
 						this.defaultTargetMethodName = 'onWorkspaceItemOpened';
 						this.disposables.add(obj.onDidOpen((event)=>{
 							if (itemSpec.test(event.uri))
@@ -318,7 +350,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 						this.defaultTargetMethodName = 'onWorkspaceItemChanged';
 						this.disposables.add(obj.onDidOpen((event)=>{
 							if (itemSpec.test(event.uri))
-								deps.fire({obj,channel}, 'openned', event.item, event.pane, event.index)
+								deps.fire({obj,channel}, 'opened', event.item, event.pane, event.index)
 						}))
 						this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
 							if (itemSpec.test(event.item.getURI()))
@@ -337,7 +369,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 			case 'textEditor':
 				this.lastActiveEditor = obj.getActiveTextEditor();
 				switch (channelAction) {
-					case 'openned':
+					case 'opened':
 						this.defaultTargetMethodName = 'onTextEditorOpened';
 						this.disposables.add(obj.onDidAddTextEditor((event)=>{
 							if (itemSpec.test(event.textEditor.getURI()))
@@ -364,7 +396,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 						this.defaultTargetMethodName = 'onTextEditorChanged';
 						this.disposables.add(obj.onDidAddTextEditor((event)=>{
 							if (itemSpec.test(event.textEditor.getURI()))
-								deps.fire({obj,channel}, 'openned', event.textEditor, event.pane, event.index)
+								deps.fire({obj,channel}, 'opened', event.textEditor, event.pane, event.index)
 						}))
 						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
 							if (this.lastActiveEditor && itemSpec.test(this.lastActiveEditor.getURI()))
@@ -378,7 +410,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 			case 'pane':
 				this.lastActivePane = obj.activePaneContainer.getActivePane();
 				switch (channelAction) {
-					case 'openned':
+					case 'opened':
 						this.defaultTargetMethodName = 'onPaneOpened';
 						this.disposables.add(obj.onDidAddPane((event)=>{
 							deps.fire({obj,channel}, event.pane)
@@ -407,7 +439,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					default:
 						this.defaultTargetMethodName = 'onPaneChanged';
 						this.disposables.add(obj.onDidAddPane((event)=>{
-							deps.fire({obj,channel}, 'openned', event.pane)
+							deps.fire({obj,channel}, 'opened', event.pane)
 						}))
 						this.disposables.add(obj.onDidDestroyPane((event)=>{
 							deps.fire({obj,channel}, 'destroyed', event.pane)
@@ -425,7 +457,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 				this.lastActiveEditor = obj.getActiveTextEditor();
 				this.lastActivePane   = obj.activePaneContainer.getActivePane();
 				this.disposables.add(obj.onDidOpen((event)=>{
-					deps.fire({obj,channel}, 'item', 'openned', event.item, event.pane, event.index)
+					deps.fire({obj,channel}, 'item', 'opened', event.item, event.pane, event.index)
 				}))
 				this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
 					deps.fire({obj,channel}, 'item', 'destroyed', event.item, event.pane, event.index)
@@ -436,7 +468,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					this.lastActiveItem = item;
 				}))
 				this.disposables.add(obj.onDidAddTextEditor((event)=>{
-					deps.fire({obj,channel}, 'textEditor', 'openned', event.textEditor, event.pane, event.index)
+					deps.fire({obj,channel}, 'textEditor', 'opened', event.textEditor, event.pane, event.index)
 				}))
 				this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
 					this.lastActiveEditor && deps.fire({obj,channel}, 'textEditor', 'deactivated', this.lastActiveEditor, editor)
@@ -444,7 +476,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					this.lastActiveEditor = editor;
 				}))
 				this.disposables.add(obj.onDidAddPane((event)=>{
-					deps.fire({obj,channel}, 'pane', 'openned', event.pane)
+					deps.fire({obj,channel}, 'pane', 'opened', event.pane)
 				}))
 				this.disposables.add(obj.onDidDestroyPane((event)=>{
 					deps.fire({obj,channel}, 'pane', 'destroyed', event.pane)
@@ -460,7 +492,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 		}
 	}
 }
-AtomWorkspaceChannelNode.channelRegex = new RegExp(`^(?<channelType>item|pane|textEditor)(?:[(]${ItemSpecStr}[)])?(?:[.](?<channelAction>openned|destroyed|activated|deactivated))?$`);
+AtomWorkspaceChannelNode.channelRegex = new RegExp(`^(?<channelType>uri|item|pane|textEditor)(?:[(]${ItemSpecStr}[)])?(?:[.](?<channelAction>opening|opened|destroyed|activated|deactivated))?$`);
 deps.registerCNodeClass(AtomWorkspaceChannelNode);
 
 new AtomWorkspacePolyfill().install();

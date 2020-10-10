@@ -1,4 +1,4 @@
-import { FirstParamOf, Disposables, RegisterGlobalService, RegisterPackage } from 'bg-dom'
+import { FirstParamOf, Disposables, DisposableMap, RegisterGlobalService, RegisterPackage } from 'bg-dom'
 
 // BGAtomPlugin makes writing Atom plugin packages easier.
 // Atom Entry Points:
@@ -38,30 +38,34 @@ export class BGAtomPlugin {
 		}
 	}
 
-	// usage: pkgName, lastSessionsState
+	// usage: pkgName, state, __filename
+	// Params:
+	//    <pkgName> : typically the string literal of the package name that the derived plugin class resides in
+	//    <state>   : the last package state that atom passes into the package activate function (passed into the derived class ctor)
+	//    <filename>: typically __filename so that this base class can determine the path of the package and the package.json file
 	constructor(pkgName, lastSessionsState, moduleFilename) {
 		this.pkgName = pkgName;
 		this.lastSessionsState = lastSessionsState || {};
 		this.moduleFilename = moduleFilename;
 		this.PluginClass = new.target;
 
-		RegisterPackage(this.moduleFilename);
+		// this supports the bg.pkgInfo feature
+		this.pkgInfo = RegisterPackage(this.moduleFilename);
 
-		// subscriptions is a place to put things that need to be cleaned up on deativation
+		// disposables is a place to put things that need to be cleaned up on deativation
 		this.disposables = new Disposables();
-		// make an alias to support transitioning to this.disposables name
 
 		// When the derived class uses our methods to create resources, they are tracked in these Maps and automatically disposed.
 		this.registeredCommands = new DisposableMap();
 		this.watchedPreCmd      = new DisposableMap();
 		this.watchedPostCmd     = new DisposableMap();
+		this.viewsByURI         = new DisposableMap();
 
 		console.assert(!this.PluginClass.instance, 'Package plugin being constructed twice. Should be a singleton. pacakgeName='+this.pkgName);
 		this.PluginClass.instance = this;
 		bg.BGAtomPlugin.instances.set(this.pkgName, this);
 
-		// if the derived class declares a lateActivate method, invoke it from the onDidActivateInitialPackages event
-
+		// register to invoke the this.lateActivate if the derived class defines it
 		if (Reflect.has(this.PluginClass.prototype, 'lateActivate')) {
 			if (atom.packages.initialPackagesActivated) {
 				setTimeout(()=>this.lateActivate(), 0);
@@ -69,13 +73,21 @@ export class BGAtomPlugin {
 				atom.packages.addDep_initialPackagesActivated(this,()=>{this.lateActivate();});
 			}
 		}
+
+		// register to invoke the this.onURIOpening if the derived class defines it
+		if (Reflect.has(this.PluginClass.prototype, 'onURIOpening')) {
+			atom.workspace.addDep_uriOpening(null, this);
+		}
 	}
 
-	// A subclass can provide a lateActivate method and it will be called after all packages are activated
-	//lateActivate(state) {}
+	// A subclass can provide these methods which are called in response to various events
+	lateActivate(state) {}
+	onURIOpening(uri) {}
+	serialize() {}
+
 
 	destroy() {
-		// !!! Note: Disposables.DisposeOfMembers(this) iterates over all members to call dispose() or destroy() so we dont call
+		// Note: Disposables.DisposeOfMembers(this) iterates over all members to call dispose() or destroy() so we dont call
 		// this.disposables.dispose directly
 
 		// if any direct member of this plugin object has a 'dispose' or 'destroy' function, call it
@@ -88,7 +100,6 @@ export class BGAtomPlugin {
 		delete bg.BGAtomPlugin.instances.delete(this.pkgName);
 	}
 
-	serialize() {}
 
 	// add to atom's command pallette
 	addCommand(name, callback) {this.registeredCommands.set(name, atom.commands.add('atom-workspace', {[name]:callback}));}
@@ -118,29 +129,6 @@ export class BGAtomPlugin {
 			deactivate: (...p) => {return PluginClass.instance && PluginClass.instance.destroy(...p) },
 			config:     PluginClass.config
 		}
-	}
-}
-
-// helper class to manage containers of resorces that we need to dispose of when deactivated
-class DisposableMap extends Map {
-	dispose() {
-		this.forEach((v)=>{
-			if (v && typeof v.dispose == 'function')
-				v.dispose;
-		});
-		this.clear();
-	}
-	set(key, value) {
-		const prevValue = this.get(key);
-		if (prevValue && typeof prevValue.dispose == 'function')
-			prevValue.dispose;
-		value && super.set(key, value);
-	}
-	delete(key) {
-		const prevValue = this.get(key);
-		if (prevValue && typeof prevValue.dispose == 'function')
-			prevValue.dispose;
-		super.delete(key);
 	}
 }
 
