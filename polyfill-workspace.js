@@ -9,6 +9,7 @@ import fs from 'fs';
 //                                   with <expression>   e.g. 'atom://' will be interpretted as the regex /^atom:[/][/]/
 const ItemSpecStr = '([/](?<itemRe>.*)[/](?<itemFlags>[gmisuy]*)|(?<itemStr>.*))'
 
+function GetURI(item) {return (!item || !item.getURI)?'' : item.getURI()}
 
 
 // helper function for itemForURI, getItemByURI and getItemsByURI
@@ -98,7 +99,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	getItemByURI(uriSpec) {
 		uriSpec = URISpecToRegex(uriSpec)
 		const items = atom.workspace.getPaneItems();
-		return items.find((item)=>{return uriSpec.test(item.getURI())});
+		return items.find((item)=>{return uriSpec.test(GetURI(item))});
 	}
 
 	// This return the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
@@ -110,7 +111,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	getItemsByURI(uriSpec) {
 		uriSpec = URISpecToRegex(uriSpec)
 		const items = atom.workspace.getPaneItems();
-		return items.filter((item)=>{return uriSpec.test(item.getURI())});
+		return items.filter((item)=>{return uriSpec.test(GetURI(item))});
 	}
 
 	// this overrides the original hide(uri) method to make it more tolerant to uri matching. For example, the actual uri might
@@ -122,7 +123,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	//            prefix to match. e.g. 'atom://config' will match 'atom://config/bg-tree-view-toolbar'
 	hide(uriSpec) {
 		for (const item of this.getItemsByURI(uriSpec)) {
-			this.orig_hide(item.getURI());
+			this.orig_hide(GetURI(item));
 		}
 	}
 
@@ -326,14 +327,14 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					case 'destroyed':
 						this.defaultTargetMethodName = 'onWorkspaceItemDestroyed';
 						this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
-							if (itemSpec.test(event.item.getURI()))
+							if (itemSpec.test(GetURI(event.item)))
 								deps.fire({obj,channel}, 'destroyed', event.item, event.pane, event.index)
 						}))
 						break;
 					case 'activated':
 						this.defaultTargetMethodName = 'onWorkspaceItemActivated';
 						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
-							if (item && itemSpec.test(item.getURI()))
+							if (item && itemSpec.test(GetURI(item)))
 								deps.fire({obj,channel}, 'activated',   item, this.lastActiveItem);
 							this.lastActiveItem = item;
 						}))
@@ -341,7 +342,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					case 'deactivated':
 						this.defaultTargetMethodName = 'onWorkspaceItemDeactivated';
 						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
-							if (this.lastActiveItem && itemSpec.test(this.lastActiveItem.getURI()))
+							if (this.lastActiveItem && itemSpec.test(GetURI(this.lastActiveItem)))
 								deps.fire({obj,channel}, 'deactivated', this.lastActiveItem, item);
 							this.lastActiveItem = item;
 						}))
@@ -353,13 +354,13 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 								deps.fire({obj,channel}, 'opened', event.item, event.pane, event.index)
 						}))
 						this.disposables.add(obj.onDidDestroyPaneItem((event)=>{
-							if (itemSpec.test(event.item.getURI()))
+							if (itemSpec.test(GetURI(event.item)))
 								deps.fire({obj,channel}, 'destroyed', event.item, event.pane, event.index)
 						}))
 						this.disposables.add(obj.onDidChangeActivePaneItem((item)=>{
-							if (this.lastActiveItem && itemSpec.test(this.lastActiveItem.getURI()))
+							if (this.lastActiveItem && itemSpec.test(GetURI(this.lastActiveItem)))
 								deps.fire({obj,channel}, 'deactivated', this.lastActiveItem, item);
-							if (item && itemSpec.test(item.getURI()))
+							if (item && itemSpec.test(GetURI(item)))
 								deps.fire({obj,channel}, 'activated',   item, this.lastActiveItem);
 							this.lastActiveItem = item;
 						}))
@@ -372,14 +373,14 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					case 'opened':
 						this.defaultTargetMethodName = 'onTextEditorOpened';
 						this.disposables.add(obj.onDidAddTextEditor((event)=>{
-							if (itemSpec.test(event.textEditor.getURI()))
+							if (itemSpec.test(GetURI(event.textEditor)))
 								deps.fire({obj,channel}, event.textEditor, event.pane, event.index)
 						}))
 						break;
 					case 'activated':
 						this.defaultTargetMethodName = 'onTextEditorActivated';
 						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
-							if (itemSpec.test(editor.getURI()))
+							if (itemSpec.test(GetURI(editor)))
 								deps.fire({obj,channel}, editor, this.lastActiveEditor)
 							this.lastActiveEditor = editor;
 						}))
@@ -387,7 +388,7 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					case 'deactivated':
 						this.defaultTargetMethodName = 'onTextEditorDeactivated';
 						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
-							if (this.lastActiveEditor && itemSpec.test(this.lastActiveEditor.getURI()))
+							if (this.lastActiveEditor && itemSpec.test(GetURI(this.lastActiveEditor)))
 								deps.fire({obj,channel}, this.lastActiveEditor, editor)
 							this.lastActiveEditor = editor;
 						}))
@@ -395,13 +396,13 @@ class AtomWorkspaceChannelNode extends ChannelNode {
 					default:
 						this.defaultTargetMethodName = 'onTextEditorChanged';
 						this.disposables.add(obj.onDidAddTextEditor((event)=>{
-							if (itemSpec.test(event.textEditor.getURI()))
+							if (itemSpec.test(GetURI(event.textEditor)))
 								deps.fire({obj,channel}, 'opened', event.textEditor, event.pane, event.index)
 						}))
 						this.disposables.add(obj.onDidChangeActiveTextEditor((editor)=>{
-							if (this.lastActiveEditor && itemSpec.test(this.lastActiveEditor.getURI()))
+							if (this.lastActiveEditor && itemSpec.test(GetURI(this.lastActiveEditor)))
 								deps.fire({obj,channel}, 'deactivated', this.lastActiveEditor, editor)
-							if (itemSpec.test(editor.getURI()))
+							if (itemSpec.test(GetURI(editor)))
 								deps.fire({obj,channel}, 'activated',   editor, this.lastActiveEditor)
 							this.lastActiveEditor = editor;
 						}))
