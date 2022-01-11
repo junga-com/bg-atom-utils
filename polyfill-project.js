@@ -65,7 +65,7 @@ export class AtomProjectPolyfill extends PolyfillObjectMixin {
 			if (subs.length>0) {
 				process.chdir(newPath);
 				this.setPaths(subs);
-				this.orig_addPath(...p);
+				//this.orig_addPath(...p);
 				return;
 			}
 		}
@@ -222,4 +222,5 @@ class SandboxRepository {
 // }
 // deps.registerCNodeClass(AtomConfigChannelNode);
 
-new AtomProjectPolyfill().install();
+//2021-02 disabling sandbox function b/c atom sees all files via two paths and gets confused.
+//new AtomProjectPolyfill().install();

@@ -29,10 +29,11 @@ const defaultBGAtomViewOptions = {
 // }));
 export class BGAtomView extends Component {
 	constructor(uri, plugin, options, ...p) {
-		super(...p, '$div.bg-toolPanel');
+		super(...p, '$div.bg-toolPanel', {root:true});
 		this.uri     = uri;
 		this.plugin  = plugin;
 		this.options = Object.assign({}, defaultBGAtomViewOptions, options) || {};
+
 
 		this.plugin.viewsByURI.set(this.uri,this);
 
@@ -74,6 +75,14 @@ export class BGAtomView extends Component {
 		if (!this._doneLateCtor) {
 			this._doneLateCtor = true;
 			this.constructAfterConnected && this.constructAfterConnected();
+
+			// implement the onResize method for derived classes
+			if (this.pane && this.onResize) {
+				this.disposables.add(this.pane.onDidChangeFlexScale((e) => {this.onResize(e)}));
+				this.disposables.add(this.pane.onDidChangeActiveItem((e) => {this.onResize(e)}));
+			}
+			if (this.onResize)
+				this._addWinListener('resize', (ev) => this.onResize(ev));
 		}
 		this.pane = atom.workspace.paneForURI(this.uri);
 		this.paneContainer = atom.workspace.paneContainerForItem(this);
@@ -138,12 +147,13 @@ export class BGAtomView extends Component {
 		this.pane = atom.workspace.paneForURI(this.uri);
 
 		// implement the onResize method for derived classes
-		if (this.pane && this.onResize) {
-			this.disposables.add(this.pane.onDidChangeFlexScale((e) => {this.onResize(e)}));
-			this.disposables.add(this.pane.onDidChangeActiveItem((e) => {this.onResize(e)}));
-		}
-		if (this.onResize)
+		if (this.onResize) {
+			if (this.pane) {
+				this.disposables.add(this.pane.onDidChangeFlexScale((e) => {this.onResize(e)}));
+				this.disposables.add(this.pane.onDidChangeActiveItem((e) => {this.onResize(e)}));
+			}
 			this._addWinListener('resize', (ev) => this.onResize(ev));
+		}
 
 		// implement the onFocus method for dericed classes
 		this.disposables.add(atom.workspace.observeActivePaneItem((item) => {
