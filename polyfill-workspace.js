@@ -87,7 +87,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	}
 
 
-	// This return the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
+	// This returns the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
 	// If <uri> matches multiple items, only the first found will be returned. (See getItemsByURI(uri))
 	// If <uri> does not match any items, undefined will be returned
 	// Alternative:
@@ -102,8 +102,8 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 		return items.find((item)=>{return uriSpec.test(GetURI(item))});
 	}
 
-	// This return the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
-	// If <uri> matches multiple items, only the first found will be returned. (See getItemsByURI(uri))
+	// This returns 0 or more WorkspaceItems with the given uri if it is open. It will not open a uri.
+	// If <uri> matches multiple items, all will be returned. (See getItemsByURI(uri))
 	// If <uri> does not match any items, undefined will be returned
 	// Params:
 	//    <uri> : a string or RegExp that will match the uri of the items to hide. A string will be interpretted as the leteral
@@ -166,8 +166,8 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 
 	// <obj2>.onURIOpening(uri)
 	// Note: not sure if this should follow the DependentsGraph pattern yet. This is a plugin pattern where the callback implements
-	// polymorphism. Maybe that is should be a different pattern. The key difference between this and other addDep* relations is that
-	// the callback can return a value which changes the bevior of the source side of the relationship.
+	// polymorphism. Maybe that should be a different pattern. The key difference between this and other addDep* relations is that
+	// the callback can return a value which changes the behavior of the source side of the relationship.
 	// Return Value:
 	//   <viewOrItem> : Can be an object inherited from HTMLElement or an item that as a registered view
 	addDep_uriOpening(uriSpec, obj2, callback) {deps.add({obj:this,  channel:this.getChannel('uri', 'opening', uriSpec)},obj2,callback)}
