@@ -20,7 +20,8 @@ function URISpecToRegex(uriSpec) {
 		return /^/;
 	if (typeof uriSpec == 'object' && uriSpec instanceof RegExp)
 		return uriSpec;
-	console.assert(false, 'malformed uriSpec in URISpecToRegex(uriSpec, uri)', {uriSpec})
+	return uriSpec;
+//	console.assert(false, 'malformed uriSpec in URISpecToRegex(uriSpec)', {uriSpec})
 }
 
 // A PolyfillObjectMixin is a way to install dynamic patches to a JS object at runtime.  This pollyfill extends the atom.workspace
@@ -90,6 +91,8 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	// This returns the WorkspaceItem with the given uri if it is open. Otherwise it returns false. It will not open a uri.
 	// If <uri> matches multiple items, only the first found will be returned. (See getItemsByURI(uri))
 	// If <uri> does not match any items, undefined will be returned
+	// If <uri> is neither a string nor a Regex object, it is returned untouched on the assumption that its the object itself
+	//     passed to something like hide(uriOrObject)
 	// Alternative:
 	//   atom.workspace.paneForURI(uri).itemForURI(uri)
 	// Params:
@@ -98,6 +101,7 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	itemForURI(uriSpec) {return this.getItemByURI(uriSpec)}
 	getItemByURI(uriSpec) {
 		uriSpec = URISpecToRegex(uriSpec)
+		if (!("test" in uriSpec)) return uriSpec;
 		const items = atom.workspace.getPaneItems();
 		return items.find((item)=>{return uriSpec.test(GetURI(item))});
 	}
@@ -105,11 +109,14 @@ export class AtomWorkspacePolyfill extends PolyfillObjectMixin {
 	// This returns 0 or more WorkspaceItems with the given uri if it is open. It will not open a uri.
 	// If <uri> matches multiple items, all will be returned. (See getItemsByURI(uri))
 	// If <uri> does not match any items, undefined will be returned
+	// If <uri> is neither a string nor a Regex object, it is returned untouched on the assumption that its the object itself
+	//     passed to something like hide(uriOrObject)
 	// Params:
 	//    <uri> : a string or RegExp that will match the uri of the items to hide. A string will be interpretted as the leteral
 	//            prefix to match. e.g. 'atom://config' will match 'atom://config/bg-tree-view-toolbar'
 	getItemsByURI(uriSpec) {
 		uriSpec = URISpecToRegex(uriSpec)
+		if (!("test" in uriSpec)) return [uriSpec];
 		const items = atom.workspace.getPaneItems();
 		return items.filter((item)=>{return uriSpec.test(GetURI(item))});
 	}
