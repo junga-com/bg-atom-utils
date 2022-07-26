@@ -2,7 +2,7 @@
   "name": "bg-atom-utils",
   "main": "esmToCjsBridge.js",
   "module": "./bg-atom-utils.js",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Utilities for writing Atom packages in spirit of bg-lib system",
   "keywords": [
     "atom",
