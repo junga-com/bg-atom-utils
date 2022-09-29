@@ -16,10 +16,23 @@ const defaultBGAtomViewOptions = {
 //    onResize()   : overridable method. This gets called when the view changes size
 //    onFocus()    : overridable method. This gets called when the view receives the focus. Often you need to delegate focus to
 //                   a specific child component of the view
-//    this.options : gets passed through constructors to implement defaults at each class in the hiearchy to set Atom features
+//    this.options : any object passed in the ctors of Components (views are Components) that is not a known content type (like a Component)
+//                   will have its members merged into the this.options object in the root Component class. The BGAtomView class ctor
+//                   and other methods can access this.options as sort of a config file. This allows any class in the hierarchy to
+//                   add a new default setting or override a setting. Objects passed on the left in the super() ctor call take precedent
+//                   over the same setting name in objects that appear on the right.
 // How To Use:
-// In your plugin entry file (see package.json:main) activate() method, register an opener callback which returns a new instance
-// of this class or a derived class.
+// If your (package.json:main) entry point module is a class that extends BGAtomPlugin, then include a onURIOpening(uri) method
+// that recognizes the uri and returns an instance of your BGAtomView class. If the uri is static (i.e. no variable part) then
+// the instance you return maybe a member variable of the plugin (because there is only one instance that can be open or not). If
+// the uri has a variable part (like a filename with a certain extension) then create a new BGAtomView instance to return.
+//    onURIOpening(uri) {
+//       if (uri ~ /<matchExpr>/)
+//          return new MyViewClass(uri);
+//    }
+//
+// Manual way (w/o BGAtomPlugin) In your plugin entry file (see package.json:main) activate() method, register an opener callback
+// which returns a new instance of this class or a derived class.
 //    this.disposables.add(atom.workspace.addOpener((uri) => {
 //       if (uri == "atom://bg-sp/console") {
 //          return new BGAtomView(uri,this, {
@@ -27,6 +40,16 @@ const defaultBGAtomViewOptions = {
 //          });
 //       }
 // }));
+//
+// Constructor Params:
+//    uri   : the uri for which this instance of view is associated. A singleton view (like the atom settings view or tree view)
+//            should have a static uri that is always the exact same string (e.g. bgdebugger://stack). If there can be multiple
+//            views displaying different data (like files of a certain type), the uri should have a variable part like a filename
+//            (e.g. myview://<filename>)
+//    plugin: the plugin instance that is creating the view. The plugin is the scope that ties all assets (like views) together.
+//    options: options is a free form object whose keys are the configuration settings for the view being created. See the
+//            defaultBGAtomViewOptions global variable in the BGAtomView module to see what keys are available and their default
+//            values.
 export class BGAtomView extends Component {
 	constructor(uri, plugin, options, ...p) {
 		super(...p, '$div.bg-toolPanel', {root:true});
