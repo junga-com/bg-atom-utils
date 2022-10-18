@@ -60,6 +60,7 @@ export class BGAtomPlugin {
 		this.watchedPreCmd      = new DisposableMap();
 		this.watchedPostCmd     = new DisposableMap();
 		this.viewsByURI         = new DisposableMap();
+		this.panelsByName       = new DisposableMap();
 
 		console.assert(!this.PluginClass.instance, 'Package plugin being constructed twice. Should be a singleton. pacakgeName='+this.pkgName);
 		this.PluginClass.instance = this;

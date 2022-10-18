@@ -13,6 +13,7 @@ function GetURI(item) {return (!item || !item.getURI)?'' : item.getURI()}
 
 
 // helper function for itemForURI, getItemByURI and getItemsByURI
+// note that sometimes atom passes a item object instead of a URI or URI regex so in that case we pass it through
 function URISpecToRegex(uriSpec) {
 	if (typeof uriSpec == 'string')
 		return new RegExp('^'+uriSpec);
@@ -21,7 +22,6 @@ function URISpecToRegex(uriSpec) {
 	if (typeof uriSpec == 'object' && uriSpec instanceof RegExp)
 		return uriSpec;
 	return uriSpec;
-//	console.assert(false, 'malformed uriSpec in URISpecToRegex(uriSpec)', {uriSpec})
 }
 
 // A PolyfillObjectMixin is a way to install dynamic patches to a JS object at runtime.  This pollyfill extends the atom.workspace
