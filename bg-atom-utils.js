@@ -2,7 +2,17 @@ import {RegisterPackage} from 'bg-dom'
 RegisterPackage(__filename);
 
 // pass through the utility exports for common things that packages that use us need to do so that they dont have to declare extra dependencies
-export {Disposables,DependentsGraph,ChannelNode,FirstParamOf,ArrangeParamsByType,BGPromise,BGRepeatablePromise,RegisterPackage} from 'bg-dom'
+export {
+	Disposables,
+	DependentsGraph,
+	ChannelNode,
+	FirstParamOf,
+	ArrangeParamsByType,
+	BGPromise,
+	BGRepeatablePromise,
+	RegisterPackage,
+	debounce} from 'bg-dom'
+
 export {default as dedent} from 'dedent'
 
 export * from './polyfill-project'
